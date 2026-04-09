@@ -379,7 +379,7 @@ class ViewController {
 | [Claude Prompt Engineering 文档](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview) | Anthropic 官方指南 |
 | [LangGPT](https://github.com/langgptai/LangGPT) | 结构化 Prompt 设计方法，中文社区活跃 |
 | [Claude 提示词库](https://docs.anthropic.com/en/prompt-library/library) | 官方示例库，覆盖多种场景 |
-| [通往 AGI 之路](https://www.waytoagi.com/) | 中文 AI 学习社区 |
+| [通往 AGI 之路](https://www.waytoagi.com/) | AI 学习社区，含 Prompt 案例 |
 
 **使用建议**：先理解角色、任务、约束、示例这些核心要素，再去模板站找相近场景改一改。在日常工作中刻意练习「加角色、加约束、加示例」，比只看教程进步快。效果好的 Prompt 保存下来按场景归类，下次直接复用。
 
