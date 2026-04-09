@@ -5,6 +5,10 @@
 [![Update](https://img.shields.io/badge/持续更新中-orange?style=flat-square)](#)
 [![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC%20BY--SA%204.0-lightgrey?style=flat-square)](https://creativecommons.org/licenses/by-sa/4.0/)
 
+
+
+![](image.png)
+
 AI 核心知识精要 — 帮你建立一套系统的 AI 认知与实践框架。
 
 ## 理解 AI
