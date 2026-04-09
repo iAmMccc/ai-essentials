@@ -7,17 +7,17 @@
 
 
 
-![](image.png)
+![](images/cover.png)
 
 AI 核心知识精要 — 帮你建立一套系统的 AI 认知与实践框架。
 
 ## 理解 AI
 
-> 即将更新
+- [Token](understanding/token/) — 大模型处理文字的最小单位，理解它才能理解上下文限制和计费逻辑
 
 ## 用好 AI
 
-- [Prompt](prompt.md) — 提示词：用户与 AI 沟通的语言，决定输出质量的第一关
+- [Prompt](using/prompt/) — 提示词：用户与 AI 沟通的语言，决定输出质量的第一关
 
 ## 玩转 AI
 
