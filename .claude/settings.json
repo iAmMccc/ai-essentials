@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.waytoagi.com)",
+      "WebFetch(domain:www.aishort.top)",
+      "Bash(curl -sL -o /dev/null -w \"%{http_code} %{url_effective}\" \"https://platform.openai.com/docs/guides/prompt-engineering\")",
+      "Bash(curl -sL -o /dev/null -w \"%{http_code} %{url_effective}\" \"https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview\")"
+    ]
+  }
+}
