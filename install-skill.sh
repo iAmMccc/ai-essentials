@@ -14,39 +14,56 @@ if [ -z "$SKILL_NAME" ]; then
   echo "用法: bash install-skill.sh <skill-name>"
   echo ""
   echo "可用的 Skills:"
-  echo "  git-commit    自动分析 git diff，生成规范的中文 commit message"
-  echo "  spm-local     SPM 本地依赖管理，绕过 Xcode 网络限制"
+  echo "  git-commit      自动分析 git diff，生成规范的中文 commit message"
+  echo "  spm-local       SPM 本地依赖管理，绕过 Xcode 网络限制"
+  echo "  douyin-to-doc   抖音视频转 Markdown 文档"
   echo ""
   echo "示例:"
   echo "  curl -sL ${BASE_URL}/install-skill.sh | bash -s git-commit"
   exit 1
 fi
 
-# 检测 AI 工具目录
-TARGET_DIR=""
-if [ -d ".claude" ]; then
-  TARGET_DIR=".claude/skills"
-elif [ -d ".cursor" ]; then
-  TARGET_DIR=".cursor/skills"
-else
-  TARGET_DIR=".claude/skills"
-fi
-
-SKILL_DIR="${TARGET_DIR}/${SKILL_NAME}"
 SKILL_BASE="${BASE_URL}/skills/${SKILL_NAME}"
 
 echo "正在安装 ${SKILL_NAME}..."
 
-# 检查 Skill 是否存在
-HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" "${SKILL_BASE}/SKILL.md")
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "错误: Skill '${SKILL_NAME}' 不存在"
-  echo "请检查 https://github.com/${REPO}/tree/${BRANCH}/skills/ 查看可用的 Skills"
+# 读取 install.conf 确定安装类型
+INSTALL_TYPE=$(curl -sL "${SKILL_BASE}/install.conf" | grep "^type=" | cut -d= -f2 | tr -d '[:space:]')
+
+if [ -z "$INSTALL_TYPE" ]; then
+  echo "错误: Skill '${SKILL_NAME}' 不存在或缺少 install.conf"
+  echo "请检查 https://github.com/${REPO}/tree/${BRANCH}/skills/"
   exit 1
 fi
 
-# 每个 Skill 的文件清单（相对于 Skill 根目录）
-# 新增 Skill 时在这里添加对应的文件列表
+# 根据 type 决定安装目录
+case "$INSTALL_TYPE" in
+  ai-tool)
+    if [ -d ".claude" ]; then
+      SKILL_DIR=".claude/skills/${SKILL_NAME}"
+    elif [ -d ".cursor" ]; then
+      SKILL_DIR=".cursor/skills/${SKILL_NAME}"
+    else
+      SKILL_DIR=".claude/skills/${SKILL_NAME}"
+    fi
+    ;;
+  standalone)
+    SKILL_DIR="${SKILL_NAME}"
+    ;;
+  *)
+    echo "错误: 未知的安装类型 '${INSTALL_TYPE}'"
+    exit 1
+    ;;
+esac
+
+# 获取文件清单（从 SKILL.md 是否存在来验证）
+HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" "${SKILL_BASE}/SKILL.md")
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "错误: Skill '${SKILL_NAME}' 不存在"
+  exit 1
+fi
+
+# 每个 Skill 的文件清单
 case "$SKILL_NAME" in
   git-commit)
     FILES="SKILL.md"
@@ -54,13 +71,15 @@ case "$SKILL_NAME" in
   spm-local)
     FILES="SKILL.md packages.json.example scripts/fetch-packages.sh"
     ;;
+  douyin-to-doc)
+    FILES="SKILL.md config.json.example scripts/douyin-to-doc.py scripts/douyin-login.py"
+    ;;
   *)
-    # 未知 Skill，只下载 SKILL.md
     FILES="SKILL.md"
     ;;
 esac
 
-# 逐个下载文件
+# 下载文件
 fail=0
 for file in $FILES; do
   dir=$(dirname "$file")
@@ -75,7 +94,6 @@ for file in $FILES; do
     echo "  下载失败: ${file}"
     fail=1
   else
-    # .sh 文件加可执行权限
     if [[ "$file" == *.sh ]]; then
       chmod +x "${SKILL_DIR}/${file}"
     fi
@@ -92,7 +110,7 @@ else
   exit 1
 fi
 
-# Skill 安装后的初始化（按需）
+# 安装后初始化
 case "$SKILL_NAME" in
   spm-local)
     if [ ! -d "Packages" ]; then
@@ -101,7 +119,6 @@ case "$SKILL_NAME" in
       cp "${SKILL_DIR}/scripts/fetch-packages.sh" Packages/scripts/fetch-packages.sh
       chmod +x Packages/scripts/fetch-packages.sh
 
-      # 将 Caches 加入 .gitignore
       if [ -f ".gitignore" ]; then
         if ! grep -q "Packages/Caches" .gitignore 2>/dev/null; then
           echo "" >> .gitignore
@@ -131,5 +148,24 @@ case "$SKILL_NAME" in
       echo ""
       echo "Packages/ 目录已存在，跳过初始化。"
     fi
+    ;;
+  douyin-to-doc)
+    if [ ! -f "${SKILL_DIR}/config.json" ]; then
+      cp "${SKILL_DIR}/config.json.example" "${SKILL_DIR}/config.json"
+    fi
+
+    echo ""
+    echo "说明："
+    echo "  输入抖音链接，自动提取语音内容，通过 AI 生成 Markdown 文档。"
+    echo ""
+    echo "依赖安装："
+    echo "  brew install ffmpeg"
+    echo "  pip install playwright && python -m playwright install chromium"
+    echo "  pip install openai-whisper"
+    echo ""
+    echo "下一步："
+    echo "  1. python3 ${SKILL_DIR}/scripts/douyin-login.py    ← 首次扫码登录"
+    echo "  2. 编辑 ${SKILL_DIR}/config.json                   ← 配置 AI 模型（可选）"
+    echo "  3. python3 ${SKILL_DIR}/scripts/douyin-to-doc.py \"抖音链接\"  ← 提取内容"
     ;;
 esac
