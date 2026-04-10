@@ -100,11 +100,28 @@ case "$SKILL_NAME" in
       cp "${SKILL_DIR}/packages.json.example" Packages/packages.json
       cp "${SKILL_DIR}/scripts/fetch-packages.sh" Packages/scripts/fetch-packages.sh
       chmod +x Packages/scripts/fetch-packages.sh
+
+      # 将 Caches 加入 .gitignore
+      if [ -f ".gitignore" ]; then
+        if ! grep -q "Packages/Caches" .gitignore 2>/dev/null; then
+          echo "" >> .gitignore
+          echo "# SPM 本地缓存（三方库源码不提交）" >> .gitignore
+          echo "Packages/Caches/" >> .gitignore
+        fi
+      else
+        echo "# SPM 本地缓存（三方库源码不提交）" > .gitignore
+        echo "Packages/Caches/" >> .gitignore
+      fi
+
       echo ""
       echo "已初始化 Packages/ 目录："
-      echo "  Packages/packages.json        ← 在这里配置依赖"
+      echo "  Packages/packages.json              ← 在这里配置依赖"
       echo "  Packages/scripts/fetch-packages.sh  ← 执行下载"
-      echo "  Packages/Caches/              ← 三方库下载目录"
+      echo "  Packages/Caches/                    ← 三方库下载目录"
+      echo ""
+      echo "说明："
+      echo "  通过终端将 SPM 三方库下载到本地，在 Xcode 中以 Add Local 方式引入。"
+      echo "  Packages/Caches/ 已自动添加到 .gitignore，三方库源码不会被提交。"
       echo ""
       echo "下一步："
       echo "  1. 编辑 Packages/packages.json，添加你的依赖"
