@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 抖音视频转文档
-输入抖音链接，自动提取字幕或语音转文字，再通过 AI 总结生成 Markdown。
+输入抖音链接，自动提取字幕，通过 AI 总结生成 Markdown。
 
 用法: python3 douyin-to-doc.py "抖音视频链接"
 
-依赖: playwright, ffmpeg, openai-whisper (可选)
+依赖: playwright, ffmpeg, openai-whisper
 """
 
 import argparse
@@ -15,7 +15,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 import urllib.request
 import urllib.error
@@ -26,7 +25,6 @@ COOKIES_JSON = os.path.join(SCRIPT_DIR, "cookies.json")
 
 
 def check_command(cmd):
-    """检查命令是否可用"""
     try:
         subprocess.run([cmd, "--version"], capture_output=True, check=False)
         return True
@@ -35,7 +33,6 @@ def check_command(cmd):
 
 
 def check_cookies():
-    """检查 Cookie 文件是否存在"""
     if not os.path.exists(COOKIES_JSON):
         return False
     if os.path.getsize(COOKIES_JSON) < 50:
@@ -43,8 +40,21 @@ def check_cookies():
     return True
 
 
+def ask_download_mode():
+    """让用户选择下载内容"""
+    print("")
+    print("请选择下载内容：")
+    print("  1. 仅音频（推荐，几 MB）")
+    print("  2. 音频 + 视频（可能几十 MB）")
+    try:
+        choice = input("请输入 (1/2) [默认 1]：").strip()
+    except (EOFError, KeyboardInterrupt):
+        choice = "1"
+    return choice == "2"
+
+
 async def fetch_video_page(url):
-    """用 Playwright 打开抖音页面，提取视频标题和音频/视频地址"""
+    """用 Playwright 打开抖音页面，提取视频信息"""
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -52,113 +62,326 @@ async def fetch_video_page(url):
         print("  pip install playwright && python -m playwright install chromium")
         sys.exit(1)
 
-    # 加载 Cookie
     with open(COOKIES_JSON, "r", encoding="utf-8") as f:
         cookies = json.load(f)
+
+    info = {
+        "title": "douyin_video",
+        "video_url": None,
+        "author": "",
+        "followers": "",
+        "total_likes": "",
+        "tags": [],
+        "publish_time": "",
+    }
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
-
-        # 注入 Cookie
         await context.add_cookies(cookies)
-
         page = await context.new_page()
 
         print("正在加载页面...")
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-
-        # 等待页面渲染
         await asyncio.sleep(8)
 
-        # 提取标题
-        title = "douyin_video"
+        # 一次性从页面提取所有元数据
         try:
-            for selector in [
-                'meta[property="og:title"]',
-                'meta[name="title"]',
-                "title"
-            ]:
-                el = await page.query_selector(selector)
-                if el:
-                    content = await el.get_attribute("content") if selector != "title" else await el.inner_text()
-                    if content and len(content) > 2:
-                        title = content.split(" - ")[0].strip()
-                        break
+            page_data = await page.evaluate("""() => {
+    const data = {};
 
-            if title == "douyin_video":
-                desc_el = await page.query_selector('[data-e2e="video-desc"]')
-                if desc_el:
-                    desc = await desc_el.inner_text()
-                    if desc and len(desc) > 2:
-                        title = desc[:50]
+    // 标题（从描述区提取，包含 hashtag）
+    const descEl = document.querySelector('[data-e2e="video-desc"]');
+    data.raw_title = descEl ? descEl.innerText.trim() : '';
+    if (!data.raw_title) {
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        data.raw_title = ogTitle ? ogTitle.content : '';
+    }
+    if (!data.raw_title) {
+        const titleEl = document.querySelector('title');
+        data.raw_title = titleEl ? titleEl.innerText.split(' - ')[0].trim() : '';
+    }
+
+    // 作者信息：查找包含「粉丝」和「获赞」的区域
+    data.author = '';
+    data.followers = '';
+    data.total_likes = '';
+    const allDivs = document.querySelectorAll('div');
+    for (const div of allDivs) {
+        const t = div.innerText || '';
+        if (t.includes('粉丝') && t.includes('获赞') && t.length < 100) {
+            const m = t.match(/^(.+?)粉丝(\\d+)获赞(\\d+)/);
+            if (m) {
+                data.author = m[1].trim();
+                data.followers = m[2];
+                data.total_likes = m[3];
+            }
+            break;
+        }
+    }
+
+    // 发布时间：从页面底部查找
+    data.publish_time = '';
+    const body = document.body.innerText;
+    const timeMatch = body.match(/发布时间[：:]\\s*([\\d-]+\\s*[\\d:]*)/);
+    if (timeMatch) data.publish_time = timeMatch[1].trim();
+
+    // 视频地址
+    const videoSource = document.querySelector('video source');
+    if (videoSource && videoSource.src) {
+        data.video_url = videoSource.src;
+    } else {
+        const videoEl = document.querySelector('video');
+        if (videoEl && videoEl.src && videoEl.src.startsWith('http')) {
+            data.video_url = videoEl.src;
+        }
+    }
+
+    if (!data.video_url) {
+        const scripts = document.querySelectorAll('script');
+        for (const s of scripts) {
+            const text = s.textContent || '';
+            if (text.includes('playAddr') || text.includes('play_addr')) {
+                try {
+                    const match = text.match(/"playApi"\\s*:\\s*"([^"]+)"/);
+                    if (match) { data.video_url = match[1]; break; }
+                } catch(e) {}
+            }
+        }
+    }
+
+    if (!data.video_url) {
+        const renderData = document.getElementById('RENDER_DATA');
+        if (renderData) {
+            try {
+                const decoded = decodeURIComponent(renderData.textContent);
+                const match = decoded.match(/"playApi"\\s*:\\s*"([^"]+)"/);
+                if (match) data.video_url = match[1];
+            } catch(e) {}
+        }
+    }
+
+    return data;
+}""")
         except Exception:
-            pass
+            page_data = {}
 
-        title = re.sub(r'[\\/:*?"<>|\n\r]', '_', title).strip()
+        await browser.close()
 
-        # 从页面 script 标签中提取视频信息（抖音把视频数据嵌入在 SSR JSON 中）
-        video_url = None
-        try:
-            video_url = await page.evaluate("""
-                () => {
-                    // 方法 1：从 video 元素的 source 获取
-                    const video = document.querySelector('video source');
-                    if (video && video.src) return video.src;
+        # 处理提取结果
+        raw_title = page_data.get("raw_title", "") or "douyin_video"
 
-                    const videoEl = document.querySelector('video');
-                    if (videoEl && videoEl.src && videoEl.src.startsWith('http')) return videoEl.src;
+        # 从标题中分离 hashtag 作为标签
+        tags = re.findall(r"#(\S+)", raw_title)
+        clean_title = re.sub(r"\s*#\S+", "", raw_title).strip()
+        if not clean_title:
+            clean_title = "douyin_video"
 
-                    // 方法 2：从页面 SSR 数据中提取
-                    const scripts = document.querySelectorAll('script');
-                    for (const s of scripts) {
-                        const text = s.textContent || '';
-                        // 查找包含 playAddr 的 JSON
-                        if (text.includes('playAddr') || text.includes('play_addr')) {
-                            try {
-                                // 尝试匹配 JSON 中的视频地址
-                                const match = text.match(/"playApi"\\s*:\\s*"([^"]+)"/);
-                                if (match) return match[1];
+        # 清理文件名
+        clean_title = re.sub(r'[\\/:*?"<>|\n\r]', '_', clean_title).strip()
+        if len(clean_title) > 80:
+            clean_title = clean_title[:80]
 
-                                const match2 = text.match(/"play_addr"\\s*:\\s*\\{[^}]*"url_list"\\s*:\\s*\\["([^"]+)"/);
-                                if (match2) return match2[1];
-                            } catch(e) {}
-                        }
-                    }
-
-                    // 方法 3：从 __RENDER_DATA__ 中提取
-                    const renderData = document.getElementById('RENDER_DATA');
-                    if (renderData) {
-                        try {
-                            const decoded = decodeURIComponent(renderData.textContent);
-                            const match = decoded.match(/"playApi"\\s*:\\s*"([^"]+)"/);
-                            if (match) return match[1];
-                        } catch(e) {}
-                    }
-
-                    return null;
-                }
-            """)
-        except Exception:
-            pass
-
-        # 如果从 JS 拿到的是相对路径，补全域名
+        video_url = page_data.get("video_url")
         if video_url and not video_url.startswith("http"):
             video_url = "https:" + video_url if video_url.startswith("//") else "https://www.douyin.com" + video_url
 
-        await browser.close()
-        return title, video_url
+        info["title"] = clean_title
+        info["video_url"] = video_url
+        info["author"] = page_data.get("author", "")
+        info["followers"] = page_data.get("followers", "")
+        info["total_likes"] = page_data.get("total_likes", "")
+        info["tags"] = tags
+        info["publish_time"] = page_data.get("publish_time", "")
+
+        return info
 
 
-def download_media(video_url, output_path):
-    """下载视频/音频文件"""
-    print("正在下载音频...")
+async def fetch_comments(url, video_author="", max_scroll=5):
+    """用 Playwright 打开页面，滚动加载评论并提取"""
     try:
-        req = urllib.request.Request(video_url, headers={
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return []
+
+    with open(COOKIES_JSON, "r", encoding="utf-8") as f:
+        cookies = json.load(f)
+
+    print("正在获取评论...")
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        await context.add_cookies(cookies)
+        page = await context.new_page()
+
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(5)
+
+        # 滚动页面加载评论
+        for i in range(max_scroll):
+            await page.evaluate("window.scrollBy(0, 800)")
+            await asyncio.sleep(2)
+
+        # 提取评论区全文
+        raw_text = await page.evaluate("""
+            () => {
+                const container = document.querySelector('[class*="comment-mainContent"]');
+                return container ? container.innerText : '';
+            }
+        """)
+
+        # 从 DOM 获取带「作者」标签的用户名列表
+        author_tagged = await page.evaluate("""
+            () => {
+                const tags = document.querySelectorAll('[class*="comment-item-tag-text"]');
+                const names = new Set();
+                for (const tag of tags) {
+                    if (tag.innerText.trim() === '作者') {
+                        // 往上找到 info-wrap，取第一个子元素（用户名）
+                        const wrap = tag.closest('[class*="comment-item-info-wrap"]');
+                        if (wrap && wrap.children[0]) {
+                            const name = wrap.children[0].innerText.trim().replace('\\n作者', '').trim();
+                            names.add(name);
+                        }
+                    }
+                }
+                return Array.from(names);
+            }
+        """)
+
+        await browser.close()
+
+        # 合并作者识别：页面提取的作者名 + DOM 标签标记的作者
+        author_names = set(author_tagged or [])
+        if video_author:
+            author_names.add(video_author)
+
+        # 解析评论文本
+        comments = parse_comment_text(raw_text, author_names)
+        print(f"  获取到 {len(comments)} 条评论")
+        return comments
+
+
+def parse_comment_text(raw_text, author_names=None):
+    """解析评论区的纯文本，提取结构化评论"""
+    if not raw_text or not raw_text.strip():
+        return []
+
+    author_names = author_names or set()
+    comments = []
+    lines = raw_text.strip().split("\n")
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # 跳过空行和系统文字
+        if not line or line in ("分享", "回复", "加载中", "全部评论", "...") or line.startswith("展开"):
+            i += 1
+            continue
+
+        # 跳过时间行
+        if re.match(r"^\d+.*前·", line) or re.match(r"^\d{4}-", line):
+            i += 1
+            continue
+
+        # 跳过纯数字行（点赞数）
+        if re.match(r"^\d+$", line):
+            i += 1
+            continue
+
+        # 跳过标签
+        if line == "作者":
+            i += 1
+            continue
+
+        # 剩下的非空行：可能是作者名或评论内容
+        # 规律：作者名后面跟 ... 再跟评论内容
+        author = line
+        content = ""
+
+        # 向后找内容
+        j = i + 1
+        while j < len(lines):
+            next_line = lines[j].strip()
+            if next_line == "...":
+                j += 1
+                continue
+            if next_line == "作者":
+                j += 1
+                continue
+            if not next_line:
+                j += 1
+                continue
+            # 时间行说明上一条评论结束
+            if re.match(r"^\d+.*前·", next_line) or re.match(r"^\d{4}-", next_line):
+                break
+            # 纯数字（点赞数）或操作按钮
+            if next_line in ("分享", "回复") or re.match(r"^\d+$", next_line):
+                break
+            if next_line.startswith("展开"):
+                break
+            # 这就是评论内容
+            content = next_line
+            break
+
+        if content and len(content) > 1:
+            # 找点赞数（在时间行之后的纯数字）
+            likes = "0"
+            for k in range(j, min(j + 5, len(lines))):
+                lk = lines[k].strip()
+                if re.match(r"^\d+$", lk):
+                    likes = lk
+                    break
+
+            is_author = author in author_names
+            comments.append({
+                "author": author,
+                "content": content,
+                "likes": likes,
+                "is_author": is_author
+            })
+
+        i = j + 1 if j > i else i + 1
+
+    return comments
+
+
+def save_comments(comments, raw_dir):
+    """保存评论到 raw 目录"""
+    if not comments:
+        return
+
+    # JSON 格式（原始数据）
+    json_path = os.path.join(raw_dir, "comments.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(comments, f, ensure_ascii=False, indent=2)
+
+    # TXT 格式（可读）
+    txt_path = os.path.join(raw_dir, "comments.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        for c in comments:
+            author = c.get("author", "匿名")
+            content = c.get("content", "")
+            likes = c.get("likes", "0")
+            tag = "（作者）" if c.get("is_author") else ""
+            f.write(f"[{author}]{tag} {content}")
+            if likes and likes != "0":
+                f.write(f"  ({likes} 赞)")
+            f.write("\n")
+
+    print(f"  评论已保存: {txt_path}")
+
+
+def download_file(url, output_path):
+    """下载文件"""
+    try:
+        req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             "Referer": "https://www.douyin.com/"
         })
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             with open(output_path, "wb") as f:
                 while True:
                     chunk = resp.read(8192)
@@ -166,11 +389,10 @@ def download_media(video_url, output_path):
                         break
                     f.write(chunk)
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
-        print(f"  已下载（{size_mb:.1f} MB）")
-        return True
+        return size_mb
     except Exception as e:
         print(f"  下载失败: {e}")
-        return False
+        return 0
 
 
 def extract_audio(video_path, audio_path):
@@ -190,14 +412,21 @@ def transcribe_audio(audio_path):
     try:
         import whisper
     except ImportError:
-        print("错误: 需要 openai-whisper 来进行语音转文字")
+        print("错误: 需要 openai-whisper")
         print("安装: pip install openai-whisper")
         return None
 
-    print("正在语音转文字（首次使用需下载模型）...")
+    print("正在语音转文字...")
     model = whisper.load_model("base")
     result = model.transcribe(audio_path, language="zh")
-    text = result.get("text", "").strip()
+
+    # 带换行的完整文本（按 segment 分段）
+    segments = result.get("segments", [])
+    if segments:
+        lines = [seg.get("text", "").strip() for seg in segments if seg.get("text", "").strip()]
+        text = "\n".join(lines)
+    else:
+        text = result.get("text", "").strip()
 
     if text:
         print(f"  转写完成（{len(text)} 字）")
@@ -207,26 +436,84 @@ def transcribe_audio(audio_path):
     return text
 
 
-def ai_summarize(text, config):
+def ai_summarize(text, supplements_text, config, comments_text="", video_info=None):
     """AI 总结"""
     api_base = config.get("api_base", "").rstrip("/")
     api_key = config.get("api_key", "")
-    model = config.get("model", "doubao-1-5-lite-32k")
+    model = config.get("model", "doubao-seed-2-0-mini-260215")
 
     if not api_base or not api_key:
         return None
 
     print(f"正在 AI 总结（{model}）...")
 
-    prompt = f"""请根据以下视频文字内容，生成一份结构化的 Markdown 文档。
+    has_supplements = bool(supplements_text and supplements_text.strip())
+    has_comments = bool(comments_text and comments_text.strip())
 
-要求：
-1. 先写一段 3-5 句话的摘要
-2. 然后是完整的正文内容（整理通顺，去掉口语化的语气词）
-3. 最后提炼 3-8 个要点
+    parts = ["原始内容"]
+    if has_comments:
+        parts.append("评论区")
+    if has_supplements:
+        parts.append("用户补充信息")
+    basis = " + ".join(parts)
+
+    # 构建来源元数据
+    vi = video_info or {}
+    meta_lines = [f"- 链接：（由调用方填入）"]
+    if vi.get("author"):
+        author_info = vi["author"]
+        if vi.get("followers"):
+            author_info += f"（粉丝 {vi['followers']}，获赞 {vi['total_likes']}）"
+        meta_lines.append(f"- 作者：{author_info}")
+    if vi.get("publish_time"):
+        meta_lines.append(f"- 发布时间：{vi['publish_time']}")
+    if vi.get("tags"):
+        meta_lines.append(f"- 标签：{'、'.join(vi['tags'])}")
+    meta_lines.append(f"- 生成依据：{basis}")
+    meta_block = "\n".join(meta_lines)
+
+    prompt = f"""请根据以下视频文字内容，生成一份结构化的 Markdown 文档。严格按照以下格式输出，不要增减章节：
+
+## 来源
+{meta_block}
+
+## 摘要
+（2-3 句话，不超过 100 字。只说内容讲了什么，不要评价。不要以「本视频」「本文」开头。）
+
+## 要点
+（3-8 条，每条一句话不超过 30 字。提炼关键信息，不要和摘要重复。）
+
+## 正文
+（将口语化内容整理为书面表达，去掉语气词和重复，保留专业术语。用小标题分段。不要重复摘要和要点的内容。作者在评论区的补充信息自然融入正文。）
+
+## 评论
+（如果有评论区内容，提取有价值的用户反馈和讨论。保留作者的回复，呈现对话关系。忽略无实质内容的评论。如果没有评论，省略此章节。）
+
+注意：
+- 不要在正文末尾加「补充信息」段落
+- 摘要、要点、正文三处不要重复同一个观点
+- 不要添加原始内容中没有的信息
 
 视频文字内容：
 {text}"""
+
+    if has_supplements:
+        prompt += f"""
+
+用户补充信息：
+{supplements_text}"""
+
+    if comments_text:
+        prompt += f"""
+
+评论区内容：
+{comments_text}
+
+评论区处理规则：
+- 标记为（作者）的评论是视频作者的补充说明，将有价值的信息融入正文
+- 其他用户的评论单独作为「## 评论」章节，保留有价值的反馈和讨论
+- 忽略纯求资源、纯表情、无实质内容的评论
+- 如果有作者对用户的回复，保留对话关系"""
 
     payload = json.dumps({
         "model": model,
@@ -245,7 +532,7 @@ def ai_summarize(text, config):
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             content = data["choices"][0]["message"]["content"]
             print("  总结完成")
@@ -259,21 +546,50 @@ def ai_summarize(text, config):
         return None
 
 
-def generate_markdown(title, raw_text, ai_summary=None):
-    """生成最终的 Markdown 文档"""
-    if ai_summary:
-        return f"# {title}\n\n{ai_summary}\n"
-    else:
-        return f"# {title}\n\n## 正文\n\n{raw_text}\n"
+def load_supplements(supplements_dir):
+    """读取补充信息目录下的所有文本内容（忽略未编辑的模板）"""
+    texts = []
+    if not os.path.isdir(supplements_dir):
+        return ""
+
+    # 模板中的占位文字，匹配到说明用户没有编辑过
+    placeholder_markers = ["在这里添加你的补充信息", "（在这里添加"]
+
+    for f in sorted(Path(supplements_dir).iterdir()):
+        if f.is_file() and f.suffix in (".md", ".txt"):
+            try:
+                content = f.read_text(encoding="utf-8").strip()
+                if not content:
+                    continue
+                # 检查是否是未编辑的模板
+                is_template = any(marker in content for marker in placeholder_markers)
+                if is_template:
+                    continue
+                texts.append(f"--- {f.name} ---\n{content}")
+            except Exception:
+                pass
+    return "\n\n".join(texts)
 
 
 def load_config():
-    """加载配置文件"""
     for path in ["config.json", os.path.join(SCRIPT_DIR, "..", "config.json")]:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
     return {}
+
+
+def get_next_version(output_dir):
+    """获取下一个版本号"""
+    existing = list(Path(output_dir).glob("v*.md"))
+    if not existing:
+        return "v1"
+    nums = []
+    for f in existing:
+        match = re.match(r"v(\d+)", f.stem)
+        if match:
+            nums.append(int(match.group(1)))
+    return f"v{max(nums) + 1}" if nums else "v1"
 
 
 def main():
@@ -282,7 +598,8 @@ def main():
     parser.add_argument("--api-base", help="AI API 地址（覆盖 config.json）")
     parser.add_argument("--api-key", help="AI API Key（覆盖 config.json）")
     parser.add_argument("--model", help="AI 模型名称（覆盖 config.json）")
-    parser.add_argument("--no-ai", action="store_true", help="跳过 AI 总结，只输出原始文字")
+    parser.add_argument("--no-ai", action="store_true", help="跳过 AI 总结")
+    parser.add_argument("--output-dir", default="output", help="输出根目录（默认 output）")
     args = parser.parse_args()
 
     # 检查依赖
@@ -306,48 +623,148 @@ def main():
     if args.model:
         config["model"] = args.model
 
-    # 用 Playwright 加载页面，提取标题和视频地址
-    print(f"正在解析: {args.url}")
-    title, video_url = asyncio.run(fetch_video_page(args.url))
+    # 解析页面
+    print(f"\n正在解析: {args.url}")
+    video_info = asyncio.run(fetch_video_page(args.url))
+    title = video_info["title"]
+    video_url = video_info["video_url"]
+    author_name = video_info["author"]
+
     print(f"视频标题: {title}")
+    if author_name:
+        author_extra = ""
+        if video_info["followers"]:
+            author_extra = f"（粉丝 {video_info['followers']}，获赞 {video_info['total_likes']}）"
+        print(f"视频作者: {author_name}{author_extra}")
+    if video_info["tags"]:
+        print(f"标签: {', '.join(video_info['tags'])}")
+    if video_info["publish_time"]:
+        print(f"发布时间: {video_info['publish_time']}")
 
     if not video_url:
         print("错误: 无法从页面提取视频地址")
         sys.exit(1)
 
-    # 下载视频并提取音频，然后转文字
-    raw_text = None
-    with tempfile.TemporaryDirectory() as work_dir:
-        video_path = os.path.join(work_dir, "video.mp4")
-        audio_path = os.path.join(work_dir, "audio.mp3")
+    # 创建输出目录结构
+    project_dir = os.path.join(args.output_dir, title)
+    raw_dir = os.path.join(project_dir, "raw")
+    supplements_dir = os.path.join(project_dir, "supplements")
+    output_dir = os.path.join(project_dir, "output")
 
-        if download_media(video_url, video_path):
+    os.makedirs(raw_dir, exist_ok=True)
+    os.makedirs(supplements_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 文件路径
+    video_path = os.path.join(raw_dir, "video.mp4")
+    audio_path = os.path.join(raw_dir, "audio.mp3")
+    transcript_path = os.path.join(raw_dir, "transcript.txt")
+
+    # 检测已有文件，跳过重复步骤
+    has_audio = os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000
+    has_video = os.path.exists(video_path) and os.path.getsize(video_path) > 1000
+    has_transcript = os.path.exists(transcript_path) and os.path.getsize(transcript_path) > 10
+
+    # 只在需要下载时才询问
+    download_video = False
+    if not has_transcript and not has_audio:
+        download_video = ask_download_mode()
+
+    if has_transcript:
+        print("检测到已有字幕，跳过下载和转写")
+        transcript = Path(transcript_path).read_text(encoding="utf-8")
+    else:
+        if has_audio:
+            print("检测到已有音频，跳过下载")
+        else:
+            # 需要下载
+            print("正在下载...")
+            size = download_file(video_url, video_path)
+            if size == 0:
+                print("错误: 下载失败")
+                sys.exit(1)
+            print(f"  视频已下载（{size:.1f} MB）")
+
             # 提取音频
             print("正在提取音频...")
-            if extract_audio(video_path, audio_path):
-                raw_text = transcribe_audio(audio_path)
+            if not extract_audio(video_path, audio_path):
+                print("  音频提取失败，尝试直接转写视频文件")
+                audio_path = video_path
             else:
-                # 可能本身就是音频文件，直接转写
-                raw_text = transcribe_audio(video_path)
+                audio_size = os.path.getsize(audio_path) / (1024 * 1024)
+                print(f"  音频已提取（{audio_size:.1f} MB）")
 
-    if not raw_text:
-        print("错误: 无法提取视频文字内容")
-        sys.exit(1)
+            # 如果用户不需要视频，删掉
+            if not download_video and os.path.exists(video_path) and audio_path != video_path:
+                os.remove(video_path)
+                print("  已删除视频文件（仅保留音频）")
+
+        # 语音转文字
+        transcript = transcribe_audio(audio_path)
+        if not transcript:
+            print("错误: 无法提取视频文字内容")
+            sys.exit(1)
+
+        # 保存字幕
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            f.write(transcript)
+        print(f"  字幕已保存: {transcript_path}")
+
+    # 如果用户要求下载视频但之前没下载
+    if download_video and not has_video and not os.path.exists(video_path):
+        print("正在下载视频...")
+        size = download_file(video_url, video_path)
+        if size > 0:
+            print(f"  视频已下载（{size:.1f} MB）")
+
+    # 获取评论（如果还没有）
+    comments_json_path = os.path.join(raw_dir, "comments.json")
+    comments_txt_path = os.path.join(raw_dir, "comments.txt")
+    if not os.path.exists(comments_json_path):
+        comments = asyncio.run(fetch_comments(args.url, video_author=author_name))
+        if comments:
+            save_comments(comments, raw_dir)
+    else:
+        print("检测到已有评论，跳过获取")
+
+    # 生成补充信息模板（如果不存在）
+    notes_path = os.path.join(supplements_dir, "notes.md")
+    if not os.path.exists(notes_path):
+        with open(notes_path, "w", encoding="utf-8") as f:
+            f.write(f"# 补充信息\n\n")
+            f.write(f"视频链接: {args.url}\n\n")
+            f.write(f"## 备注\n\n（在这里添加你的补充信息：截图描述、评论摘录、相关链接等）\n")
+
+    # 读取评论文本（参与 AI 总结）
+    comments_text = ""
+    if os.path.exists(comments_txt_path):
+        comments_text = Path(comments_txt_path).read_text(encoding="utf-8").strip()
 
     # AI 总结
-    ai_summary = None
     if not args.no_ai and config.get("api_key"):
-        ai_summary = ai_summarize(raw_text, config)
+        supplements_text = load_supplements(supplements_dir)
+        # 评论单独传入，和用户补充信息区分
+        summary = ai_summarize(transcript, supplements_text, config, comments_text=comments_text, video_info=video_info)
+        if summary:
+            # 替换链接占位符
+            summary = summary.replace("（由调用方填入）", args.url)
+            version = get_next_version(output_dir)
+            summary_path = os.path.join(output_dir, f"{version}.md")
+            with open(summary_path, "w", encoding="utf-8") as f:
+                f.write(f"# {title}\n\n{summary}\n")
+            print(f"  总结已保存: {summary_path}")
     elif not args.no_ai and not config.get("api_key"):
-        print("未配置 AI（跳过总结，只输出原始文字）")
+        print("未配置 AI（跳过总结，只保留原始字幕）")
 
-    # 生成 Markdown
-    markdown = generate_markdown(title, raw_text, ai_summary)
-    output_path = f"{title}.md"
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(markdown)
+    # 输出汇总
+    print(f"\n完成！文件保存在: {project_dir}/")
+    print(f"  raw/          ← 原始音频和字幕")
+    print(f"  supplements/  ← 补充信息（可手动编辑 notes.md）")
+    print(f"  output/       ← AI 总结文档")
 
-    print(f"\n已生成: {output_path}")
+    if not args.no_ai and config.get("api_key"):
+        print(f"\n如需补充信息后重新生成，编辑 supplements/ 下的文件后重新执行命令，")
+        print(f"会自动生成新版本（v2、v3...）。")
 
 
 if __name__ == "__main__":

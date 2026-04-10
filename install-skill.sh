@@ -72,7 +72,7 @@ case "$SKILL_NAME" in
     FILES="SKILL.md packages.json.example scripts/fetch-packages.sh"
     ;;
   douyin-to-doc)
-    FILES="SKILL.md config.json.example scripts/douyin-to-doc.py scripts/douyin-login.py"
+    FILES="SKILL.md config.json.example run.sh scripts/douyin-to-doc.py scripts/douyin-login.py"
     ;;
   *)
     FILES="SKILL.md"
@@ -158,14 +158,11 @@ case "$SKILL_NAME" in
     echo "说明："
     echo "  输入抖音链接，自动提取语音内容，通过 AI 生成 Markdown 文档。"
     echo ""
-    echo "依赖安装："
-    echo "  brew install ffmpeg"
-    echo "  pip install playwright && python -m playwright install chromium"
-    echo "  pip install openai-whisper"
-    echo ""
     echo "下一步："
-    echo "  1. python3 ${SKILL_DIR}/scripts/douyin-login.py    ← 首次扫码登录"
-    echo "  2. 编辑 ${SKILL_DIR}/config.json                   ← 配置 AI 模型（可选）"
-    echo "  3. python3 ${SKILL_DIR}/scripts/douyin-to-doc.py \"抖音链接\"  ← 提取内容"
+    echo "  1. ./${SKILL_DIR}/run.sh login          ← 首次扫码登录"
+    echo "  2. 编辑 ${SKILL_DIR}/config.json        ← 配置 AI 模型（可选）"
+    echo "  3. ./${SKILL_DIR}/run.sh \"抖音链接\"      ← 提取内容"
+    echo ""
+    echo "脚本会自动检测 Python 版本和依赖，缺少时会提示安装。"
     ;;
 esac

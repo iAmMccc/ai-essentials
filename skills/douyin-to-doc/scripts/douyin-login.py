@@ -59,8 +59,25 @@ async def login():
         context = await browser.new_context()
         page = await context.new_page()
 
-        await page.goto(DOUYIN_URL)
-        print(f"已打开: {DOUYIN_URL}")
+        await page.goto(DOUYIN_URL, wait_until="domcontentloaded")
+        await asyncio.sleep(3)
+
+        # 尝试点击登录按钮，触发登录弹窗
+        try:
+            login_btn = await page.query_selector('button:has-text("登录")')
+            if not login_btn:
+                login_btn = await page.query_selector('[data-e2e="user-login"]')
+            if not login_btn:
+                login_btn = await page.query_selector('text=登录')
+            if login_btn:
+                await login_btn.click()
+                await asyncio.sleep(2)
+                print("已弹出登录框，请用抖音 App 扫码")
+            else:
+                print("未找到登录按钮，请在页面中手动点击登录")
+        except Exception:
+            print("请在页面中手动点击登录")
+
         print("等待登录...\n")
 
         # 等待登录成功：检测页面中出现用户头像或个人信息元素
