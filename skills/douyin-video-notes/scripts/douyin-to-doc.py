@@ -856,8 +856,8 @@ def main():
     print("")
 
     if summary_version and not args.no_ai:
-        print(f"编辑 supplements/ 后重新执行，会生成新版本。")
-        print(f"会自动生成新版本（v2、v3...）。")
+        next_ver = get_next_version(output_dir)
+        print(f"编辑 supplements/ 后重新执行，将生成 {next_ver}.md。")
 
 
 if __name__ == "__main__":
