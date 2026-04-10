@@ -423,6 +423,33 @@ def transcribe_audio(audio_path):
     return text
 
 
+def cleanup_ai_output(text):
+    """后处理：清理 AI 输出中的第三方视角用词"""
+    replacements = [
+        ("该内容", ""),
+        ("该方法", "这个方法"),
+        ("该视频", ""),
+        ("该技巧", "这个技巧"),
+        ("该工具", "这个工具"),
+        ("该流程", "这个流程"),
+        ("作者指出", ""),
+        ("作者提到", ""),
+        ("作者分享了", ""),
+        ("视频讲解了", ""),
+        ("视频中提到", ""),
+        ("本视频", ""),
+        ("部分开发者", "开发者"),
+    ]
+    for old, new in replacements:
+        text = text.replace(old, new)
+
+    # 清理替换后可能出现的多余空格和空行
+    text = re.sub(r"  +", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text
+
+
 def ai_summarize(text, supplements_text, config, comments_text="", video_info=None):
     """AI 总结"""
     api_base = config.get("api_base", "").rstrip("/")
@@ -534,7 +561,7 @@ def ai_summarize(text, supplements_text, config, comments_text="", video_info=No
         with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             content = data["choices"][0]["message"]["content"]
-            return content
+            return cleanup_ai_output(content)
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
         print(f"  AI 总结失败（HTTP {e.code}）: {body[:200]}")
