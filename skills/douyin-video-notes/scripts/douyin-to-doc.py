@@ -719,7 +719,7 @@ def main():
 
         # 语音转文字
         import warnings
-        print("· 语音转文字...", end="", flush=True)
+        print("· 转为文字...", end="", flush=True)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             transcript = transcribe_audio(audio_path)
@@ -778,7 +778,7 @@ def main():
         print("· 未配置 AI 模型，无法生成总结。")
         print("")
         try:
-            choice = input("是否现在配置？(y/n) [默认 y]：").strip().lower()
+            choice = input("是否配置 AI 模型进行内容总结？(y/n) [默认 y]：").strip().lower()
         except (EOFError, KeyboardInterrupt):
             choice = "n"
 

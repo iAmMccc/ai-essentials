@@ -6,7 +6,7 @@ description: |
 
 # 抖音视频智能总结
 
-输入抖音视频链接，自动下载视频、提取音频、语音转文字、获取评论，通过 AI 生成结构化笔记。
+输入抖音视频链接，自动下载视频、提取音频、转为文字、获取评论，通过 AI 生成结构化笔记。
 
 ## 一、使用手册
 
@@ -28,7 +28,7 @@ curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-sk
 | Python 3.10~3.13 | 运行环境 | `brew install python@3.12` |
 | playwright | 页面解析 + 登录 | `pip install playwright && python -m playwright install chromium` |
 | ffmpeg | 音频提取 | `brew install ffmpeg` |
-| openai-whisper | 语音转文字 | `pip install openai-whisper` |
+| openai-whisper | 转为文字 | `pip install openai-whisper` |
 
 > 国内用户可使用 pip 镜像源加速：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple`
 
@@ -55,7 +55,7 @@ open douyin-video-notes/config.json
 ./douyin-video-notes/run.sh "抖音视频链接"
 ```
 
-脚本会自动检测环境、提示登录、下载视频、语音转文字、获取评论、AI 总结，全程无需额外操作。
+脚本会自动检测环境、提示登录、下载视频、转为文字、获取评论、AI 总结，全程无需额外操作。
 
 ### 4. 补充信息（可选）
 
