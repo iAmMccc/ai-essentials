@@ -91,3 +91,28 @@ else
   rm -rf "$SKILL_DIR"
   exit 1
 fi
+
+# Skill 安装后的初始化（按需）
+case "$SKILL_NAME" in
+  spm-local)
+    if [ ! -d "Packages" ]; then
+      mkdir -p Packages/Caches Packages/scripts
+      cp "${SKILL_DIR}/packages.json.example" Packages/packages.json
+      cp "${SKILL_DIR}/scripts/fetch-packages.sh" Packages/scripts/fetch-packages.sh
+      chmod +x Packages/scripts/fetch-packages.sh
+      echo ""
+      echo "已初始化 Packages/ 目录："
+      echo "  Packages/packages.json        ← 在这里配置依赖"
+      echo "  Packages/scripts/fetch-packages.sh  ← 执行下载"
+      echo "  Packages/Caches/              ← 三方库下载目录"
+      echo ""
+      echo "下一步："
+      echo "  1. 编辑 Packages/packages.json，添加你的依赖"
+      echo "  2. 执行 ./Packages/scripts/fetch-packages.sh"
+      echo "  3. 在 Xcode 中 Add Local 添加 Packages/Caches/ 下的库"
+    else
+      echo ""
+      echo "Packages/ 目录已存在，跳过初始化。"
+    fi
+    ;;
+esac
