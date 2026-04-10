@@ -84,3 +84,13 @@ git diff            # 未暂存的变更
 - 不要生成英文的 commit message
 - 不要把所有改动的文件名罗列到 message 里
 - 不要写超过 50 字的描述
+
+## 安装
+
+在你的项目根目录下执行：
+
+```bash
+curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s git-commit
+```
+
+安装后在对话中说「帮我提交」即可触发。
