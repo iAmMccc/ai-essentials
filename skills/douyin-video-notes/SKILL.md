@@ -1,94 +1,64 @@
 ---
-name: douyin-to-doc
+name: douyin-video-notes
 description: |
-  当用户要求提取抖音视频内容、获取视频字幕、总结视频内容时使用。
-  输入一个抖音链接，自动提取文字内容并生成 Markdown 文档。
+  抖音视频智能总结。输入抖音链接，自动提取语音内容，通过 AI 生成结构化笔记。
 ---
 
-# 抖音视频转文档
+# 抖音视频智能总结
 
-输入抖音视频链接，自动提取视频中的文字内容，并通过 AI 总结生成 Markdown 文档。
+输入抖音视频链接，自动下载视频、提取音频、语音转文字、获取评论，通过 AI 生成结构化笔记。
 
-## 工作流程
+## 使用
+
+```bash
+./run.sh "抖音视频链接"
+```
+
+首次使用会自动提示扫码登录，无需单独操作。脚本会自动检测 Python 版本和依赖，缺少时提示安装。
+
+### 参数
+
+```bash
+./run.sh "链接" --no-ai          # 跳过 AI 总结，只提取原始内容
+./run.sh "链接" --api-base URL --api-key KEY --model NAME   # 指定模型
+```
+
+## 输出结构
 
 ```
-首次使用：运行登录脚本 → 扫码 → Cookie 保存到本地
-    ↓
-日常使用：输入抖音 URL → 自动提取字幕/音频转文字 → AI 总结 → 输出 Markdown
-    ↓
-Cookie 过期：脚本提示重新登录
+output/视频标题/
+├── raw/            视频 · 音频 · 字幕 · 评论
+├── supplements/    补充信息（可手动编辑）
+└── output/         v1.md（AI 总结，重复执行生成新版本）
 ```
 
 ## 依赖
 
 | 工具 | 用途 | 安装 |
 |------|------|------|
-| playwright | 浏览器登录 + 页面解析 | `pip install playwright && python -m playwright install chromium` |
+| playwright | 页面解析 + 登录 | `pip install playwright && python -m playwright install chromium` |
 | ffmpeg | 音频提取 | `brew install ffmpeg` |
 | openai-whisper | 语音转文字 | `pip install openai-whisper` |
 
-## 使用
-
-### 第一步：登录抖音（首次使用）
-
-```bash
-python3 scripts/douyin-login.py
-```
-
-脚本会打开浏览器，在抖音页面扫码登录。登录成功后 Cookie 自动保存到 `scripts/cookies.txt`，后续使用无需重复登录。
-
-### 第二步：提取视频内容
-
-```bash
-python3 scripts/douyin-to-doc.py "抖音视频链接"
-```
-
-脚本会：
-1. 用 Playwright 加载页面，提取视频标题和视频地址
-2. 下载视频并提取音频
-3. Whisper 语音转文字
-4. AI 总结生成 Markdown
-
-### 命令行参数
-
-```bash
-# 跳过 AI 总结，只输出原始文字
-python3 scripts/douyin-to-doc.py "链接" --no-ai
-
-# 指定模型（覆盖 config.json）
-python3 scripts/douyin-to-doc.py "链接" --api-base https://api.openai.com/v1 --api-key sk-xxx --model gpt-4o-mini
-```
+> 依赖安装需要网络，国内用户可使用 pip 镜像源：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple`
 
 ## AI 总结配置
 
-编辑 `config.json` 配置模型信息：
-
-```json
-{
-  "api_base": "https://ark.cn-beijing.volces.com/api/v3",
-  "api_key": "你的 API Key",
-  "model": "doubao-1-5-lite-32k"
-}
-```
+首次未配置时脚本会交互引导填写，也可以手动编辑 `config.json`：
 
 | 服务 | api_base | model |
 |------|----------|-------|
-| 豆包（火山方舟） | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-1-5-lite-32k`（免费） |
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| 豆包（火山方舟） | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-seed-2-0-mini-260215` |
 | DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
-
-不配置时脚本会跳过 AI 总结，只输出原始文字。
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
 
 ## 安装
 
 ```bash
-curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-to-doc
+curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-video-notes
 ```
 
-## 注意事项
-
-- `cookies.txt` 和 `cookies.json` 包含登录信息，已自动添加到 `.gitignore`，不要手动提交
-- Cookie 有效期有限，过期后脚本会提示重新登录
+或直接将 `douyin-video-notes` 文件夹复制到本地使用，后续操作不依赖 GitHub。
 
 ## 免责声明
 
