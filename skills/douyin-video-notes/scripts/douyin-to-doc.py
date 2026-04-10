@@ -747,12 +747,12 @@ def main():
         print("· 检测到已有评论，跳过获取")
 
     # 生成补充信息模板（如果不存在）
-    notes_path = os.path.join(supplements_dir, "notes.md")
-    if not os.path.exists(notes_path):
-        with open(notes_path, "w", encoding="utf-8") as f:
+    extra_path = os.path.join(supplements_dir, "extra.md")
+    if not os.path.exists(extra_path):
+        with open(extra_path, "w", encoding="utf-8") as f:
             f.write(f"# 补充信息\n\n")
             f.write(f"视频链接: {clean_url}\n\n")
-            f.write(f"## 备注\n\n（在这里添加你的补充信息：截图描述、评论摘录、相关链接等）\n")
+            f.write(f"（在这里添加额外信息：GitHub 地址、工具名称、关键截图描述、相关链接等）\n")
 
     # 读取评论文本（参与 AI 总结）
     comments_text = ""

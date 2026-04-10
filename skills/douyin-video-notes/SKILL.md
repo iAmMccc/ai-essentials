@@ -8,59 +8,79 @@ description: |
 
 输入抖音视频链接，自动下载视频、提取音频、语音转文字、获取评论，通过 AI 生成结构化笔记。
 
-## 使用
+## 一、使用手册
+
+### 1. 安装
+
+在你想要存放输出文件的目录下执行：
 
 ```bash
-./run.sh "抖音视频链接"
+cd ~/Desktop/your-workspace    # 切换到你的工作目录
+curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-video-notes
 ```
 
-首次使用会自动提示扫码登录，无需单独操作。脚本会自动检测 Python 版本和依赖，缺少时提示安装。
+> 国内网络无法访问 GitHub？通过其他方式获取 `douyin-video-notes` 文件夹，复制到本地即可。安装后的所有操作不依赖 GitHub。
 
-### 参数
-
-```bash
-./run.sh "链接" --no-ai          # 跳过 AI 总结，只提取原始内容
-./run.sh "链接" --api-base URL --api-key KEY --model NAME   # 指定模型
-```
-
-## 输出结构
-
-```
-output/视频标题/
-├── raw/            视频 · 音频 · 字幕 · 评论
-├── supplements/    补充信息（可手动编辑）
-└── output/         v1.md（AI 总结，重复执行生成新版本）
-```
-
-## 依赖
+执行时脚本会自动检测依赖，缺少时会提示安装命令。以下是依赖列表，供参考：
 
 | 工具 | 用途 | 安装 |
 |------|------|------|
+| Python 3.10~3.13 | 运行环境 | `brew install python@3.12` |
 | playwright | 页面解析 + 登录 | `pip install playwright && python -m playwright install chromium` |
 | ffmpeg | 音频提取 | `brew install ffmpeg` |
 | openai-whisper | 语音转文字 | `pip install openai-whisper` |
 
-> 依赖安装需要网络，国内用户可使用 pip 镜像源：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple`
+> 国内用户可使用 pip 镜像源加速：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple`
 
-## AI 总结配置
+### 2. 配置 AI（可选）
 
-首次未配置时脚本会交互引导填写，也可以手动编辑 `config.json`：
+脚本会自动提取视频的字幕、音频转文字和评论。如果你还希望 AI 帮你整理成结构化笔记，需要配置一个 AI 模型。
 
-| 服务 | api_base | model |
-|------|----------|-------|
-| 豆包（火山方舟） | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-seed-2-0-mini-260215` |
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+首次执行时脚本会交互引导填写，你需要提供三个信息：
+- `api_base`：AI 服务的接口地址
+- `api_key`：你的 API 密钥
+- `model`：模型名称
 
-## 安装
+也可以直接编辑配置文件：
 
 ```bash
-curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-video-notes
+open douyin-video-notes/config.json
 ```
 
-或直接将 `douyin-video-notes` 文件夹复制到本地使用，后续操作不依赖 GitHub。
+不配置则跳过 AI 总结，只保留原始内容。
 
-## 免责声明
+### 3. 执行
+
+```bash
+./douyin-video-notes/run.sh "抖音视频链接"
+```
+
+脚本会自动检测环境、提示登录、下载视频、语音转文字、获取评论、AI 总结，全程无需额外操作。
+
+### 4. 补充信息（可选）
+
+如果你有视频中未体现的额外信息，可以手动补充后重新执行，AI 会将补充内容纳入总结并生成新版本（v2、v3...）。
+
+补充方式：
+- **文字信息**（GitHub 地址、工具名称、关键数据等）：编辑 `output/视频标题/supplements/extra.md`
+- **图片、截图、文档等文件**：直接放入 `output/视频标题/supplements/` 目录
+
+然后重新执行：
+
+```bash
+./douyin-video-notes/run.sh "同一个抖音链接"
+```
+
+## 二、输出结构
+
+```
+output/视频标题/
+├── raw/            视频 · 音频 · 字幕 · 评论
+├── supplements/    补充信息（extra.md + 截图等文件）
+└── output/         v1.md（重复执行生成新版本）
+```
+
+## 三、免责声明
 
 本工具仅供个人学习和研究使用，使用时请注意：
 
