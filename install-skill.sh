@@ -7,7 +7,6 @@
 REPO="iAmMccc/ai-essentials"
 BRANCH="main"
 BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
-API_URL="https://api.github.com/repos/${REPO}/contents/skills"
 
 SKILL_NAME="$1"
 
@@ -34,56 +33,58 @@ else
 fi
 
 SKILL_DIR="${TARGET_DIR}/${SKILL_NAME}"
+SKILL_BASE="${BASE_URL}/skills/${SKILL_NAME}"
 
 echo "正在安装 ${SKILL_NAME}..."
 
-# 检查 Skill 是否存在（通过 SKILL.md 判断）
-SKILL_URL="${BASE_URL}/skills/${SKILL_NAME}/SKILL.md"
-HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" "$SKILL_URL")
+# 检查 Skill 是否存在
+HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" "${SKILL_BASE}/SKILL.md")
 if [ "$HTTP_CODE" != "200" ]; then
   echo "错误: Skill '${SKILL_NAME}' 不存在"
   echo "请检查 https://github.com/${REPO}/tree/${BRANCH}/skills/ 查看可用的 Skills"
   exit 1
 fi
 
-# 通过 GitHub API 获取 Skill 目录下的所有文件
-download_dir() {
-  local api_path="$1"
-  local local_path="$2"
+# 每个 Skill 的文件清单（相对于 Skill 根目录）
+# 新增 Skill 时在这里添加对应的文件列表
+case "$SKILL_NAME" in
+  git-commit)
+    FILES="SKILL.md"
+    ;;
+  spm-local)
+    FILES="SKILL.md packages.json.example scripts/fetch-packages.sh"
+    ;;
+  *)
+    # 未知 Skill，只下载 SKILL.md
+    FILES="SKILL.md"
+    ;;
+esac
 
-  mkdir -p "$local_path"
+# 逐个下载文件
+fail=0
+for file in $FILES; do
+  dir=$(dirname "$file")
+  if [ "$dir" != "." ]; then
+    mkdir -p "${SKILL_DIR}/${dir}"
+  else
+    mkdir -p "${SKILL_DIR}"
+  fi
 
-  # 获取目录内容列表
-  local content
-  content=$(curl -sL "${API_URL}/${SKILL_NAME}${api_path:+/$api_path}")
-
-  # 解析 JSON（用 python3，macOS 自带）
-  echo "$content" | python3 -c "
-import json, sys
-items = json.load(sys.stdin)
-if not isinstance(items, list):
-    sys.exit(0)
-for item in items:
-    print(item['type'] + '\t' + item['name'] + '\t' + item.get('download_url', ''))
-" 2>/dev/null | while IFS=$'\t' read -r type name download_url; do
-    if [ "$type" = "file" ] && [ -n "$download_url" ]; then
-      curl -sL "$download_url" -o "${local_path}/${name}"
-      # 保持脚本的可执行权限
-      if [[ "$name" == *.sh ]]; then
-        chmod +x "${local_path}/${name}"
-      fi
-    elif [ "$type" = "dir" ]; then
-      download_dir "${api_path:+$api_path/}${name}" "${local_path}/${name}"
+  curl -sL "${SKILL_BASE}/${file}" -o "${SKILL_DIR}/${file}"
+  if [ $? -ne 0 ]; then
+    echo "  下载失败: ${file}"
+    fail=1
+  else
+    # .sh 文件加可执行权限
+    if [[ "$file" == *.sh ]]; then
+      chmod +x "${SKILL_DIR}/${file}"
     fi
-  done
-}
+  fi
+done
 
-# 下载整个 Skill 文件夹
-download_dir "" "$SKILL_DIR"
-
-# 验证安装结果
-if [ -f "${SKILL_DIR}/SKILL.md" ]; then
-  file_count=$(find "$SKILL_DIR" -type f | wc -l | tr -d ' ')
+# 验证
+if [ "$fail" -eq 0 ] && [ -f "${SKILL_DIR}/SKILL.md" ]; then
+  file_count=$(echo "$FILES" | wc -w | tr -d ' ')
   echo "已安装到 ${SKILL_DIR}/（${file_count} 个文件）"
 else
   echo "安装失败，请检查网络连接"
