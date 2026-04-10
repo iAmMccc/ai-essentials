@@ -40,17 +40,7 @@ def check_cookies():
     return True
 
 
-def ask_download_mode():
-    """让用户选择下载内容"""
-    print("")
-    print("请选择下载内容：")
-    print("  1. 仅音频（推荐，几 MB）")
-    print("  2. 音频 + 视频（可能几十 MB）")
-    try:
-        choice = input("请输入 (1/2) [默认 1]：").strip()
-    except (EOFError, KeyboardInterrupt):
-        choice = "1"
-    return choice == "2"
+    # ask_download_mode 已移除，视频默认保留
 
 
 async def fetch_video_page(url):
@@ -81,7 +71,7 @@ async def fetch_video_page(url):
         await context.add_cookies(cookies)
         page = await context.new_page()
 
-        print("正在加载页面...")
+        # 由调用方打印进度
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(8)
 
@@ -207,7 +197,7 @@ async def fetch_comments(url, video_author="", max_scroll=5):
     with open(COOKIES_JSON, "r", encoding="utf-8") as f:
         cookies = json.load(f)
 
-    print("正在获取评论...")
+    # 由调用方打印进度
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -259,7 +249,7 @@ async def fetch_comments(url, video_author="", max_scroll=5):
 
         # 解析评论文本
         comments = parse_comment_text(raw_text, author_names)
-        print(f"  获取到 {len(comments)} 条评论")
+        # 由调用方打印进度
         return comments
 
 
@@ -371,7 +361,7 @@ def save_comments(comments, raw_dir):
                 f.write(f"  ({likes} 赞)")
             f.write("\n")
 
-    print(f"  评论已保存: {txt_path}")
+    # 由调用方打印进度
 
 
 def download_file(url, output_path):
@@ -416,7 +406,6 @@ def transcribe_audio(audio_path):
         print("安装: pip install openai-whisper")
         return None
 
-    print("正在语音转文字...")
     model = whisper.load_model("base")
     result = model.transcribe(audio_path, language="zh")
 
@@ -428,10 +417,8 @@ def transcribe_audio(audio_path):
     else:
         text = result.get("text", "").strip()
 
-    if text:
-        print(f"  转写完成（{len(text)} 字）")
-    else:
-        print("  转写结果为空")
+    if not text:
+        text = None
 
     return text
 
@@ -445,7 +432,7 @@ def ai_summarize(text, supplements_text, config, comments_text="", video_info=No
     if not api_base or not api_key:
         return None
 
-    print(f"正在 AI 总结（{model}）...")
+    # 由调用方打印进度
 
     has_supplements = bool(supplements_text and supplements_text.strip())
     has_comments = bool(comments_text and comments_text.strip())
@@ -535,7 +522,6 @@ def ai_summarize(text, supplements_text, config, comments_text="", video_info=No
         with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             content = data["choices"][0]["message"]["content"]
-            print("  总结完成")
             return content
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
@@ -592,6 +578,27 @@ def get_next_version(output_dir):
     return f"v{max(nums) + 1}" if nums else "v1"
 
 
+def normalize_douyin_url(url):
+    """从各种抖音链接格式中提取视频 ID，转为标准 URL"""
+    # 去掉 zsh 转义
+    url = url.replace("\\?", "?").replace("\\=", "=").replace("\\&", "&")
+
+    # 搜索结果链接：真正的视频 ID 在 modal_id 参数里
+    modal_match = re.search(r"modal_id=(\d+)", url)
+    if modal_match:
+        video_id = modal_match.group(1)
+        return f"https://www.douyin.com/video/{video_id}"
+
+    # 标准链接：/video/数字ID
+    match = re.search(r"/video/(\d+)", url)
+    if match:
+        video_id = match.group(1)
+        return f"https://www.douyin.com/video/{video_id}"
+
+    # 其他格式，原样返回
+    return url
+
+
 def main():
     parser = argparse.ArgumentParser(description="抖音视频转 Markdown 文档")
     parser.add_argument("url", help="抖音视频链接")
@@ -608,11 +615,23 @@ def main():
         print("安装: brew install ffmpeg")
         sys.exit(1)
 
-    # 检查 Cookie
+    # 检查 Cookie，没有则提示登录
     if not check_cookies():
-        print("未检测到抖音登录信息，请先执行登录：")
-        print(f"  python3 {os.path.join(SCRIPT_DIR, 'douyin-login.py')}")
-        sys.exit(1)
+        print("未检测到抖音登录信息，需要先扫码登录。")
+        try:
+            choice = input("是否现在登录？(y/n) [默认 y]：").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            choice = "n"
+        if choice in ("", "y", "yes"):
+            import subprocess as _sp
+            login_script = os.path.join(SCRIPT_DIR, "douyin-login.py")
+            result = _sp.run([sys.executable, login_script])
+            if result.returncode != 0 or not check_cookies():
+                print("登录失败，请重试")
+                sys.exit(1)
+            print("")  # 空行分隔
+        else:
+            sys.exit(1)
 
     # 加载配置
     config = load_config()
@@ -623,27 +642,36 @@ def main():
     if args.model:
         config["model"] = args.model
 
+    # 清洗 URL
+    clean_url = normalize_douyin_url(args.url)
+    if clean_url != args.url:
+        print(f"· 已转换链接: {clean_url}")
+
     # 解析页面
-    print(f"\n正在解析: {args.url}")
-    video_info = asyncio.run(fetch_video_page(args.url))
+    print(f"· 正在加载页面...")
+    video_info = asyncio.run(fetch_video_page(clean_url))
     title = video_info["title"]
     video_url = video_info["video_url"]
     author_name = video_info["author"]
 
-    print(f"视频标题: {title}")
+    if not video_url:
+        print("错误: 无法从页面提取视频地址")
+        sys.exit(1)
+
+    # 视频信息
+    print("")
+    print("── 视频信息 ──────────────────")
+    print(f"  标题: {title}")
     if author_name:
         author_extra = ""
         if video_info["followers"]:
             author_extra = f"（粉丝 {video_info['followers']}，获赞 {video_info['total_likes']}）"
-        print(f"视频作者: {author_name}{author_extra}")
+        print(f"  作者: {author_name}{author_extra}")
     if video_info["tags"]:
-        print(f"标签: {', '.join(video_info['tags'])}")
+        print(f"  标签: {', '.join(video_info['tags'])}")
     if video_info["publish_time"]:
-        print(f"发布时间: {video_info['publish_time']}")
-
-    if not video_url:
-        print("错误: 无法从页面提取视频地址")
-        sys.exit(1)
+        print(f"  发布: {video_info['publish_time']}")
+    print("")
 
     # 创建输出目录结构
     project_dir = os.path.join(args.output_dir, title)
@@ -665,74 +693,65 @@ def main():
     has_video = os.path.exists(video_path) and os.path.getsize(video_path) > 1000
     has_transcript = os.path.exists(transcript_path) and os.path.getsize(transcript_path) > 10
 
-    # 只在需要下载时才询问
-    download_video = False
-    if not has_transcript and not has_audio:
-        download_video = ask_download_mode()
-
     if has_transcript:
-        print("检测到已有字幕，跳过下载和转写")
+        print("· 检测到已有字幕，跳过下载和转写")
         transcript = Path(transcript_path).read_text(encoding="utf-8")
     else:
         if has_audio:
-            print("检测到已有音频，跳过下载")
+            print("· 检测到已有音频，跳过下载")
         else:
-            # 需要下载
-            print("正在下载...")
+            print("· 下载视频...", end="", flush=True)
             size = download_file(video_url, video_path)
             if size == 0:
-                print("错误: 下载失败")
+                print("失败")
                 sys.exit(1)
-            print(f"  视频已下载（{size:.1f} MB）")
+            print(f"完成（{size:.1f} MB）")
 
-            # 提取音频
-            print("正在提取音频...")
+            print("· 提取音频...", end="", flush=True)
             if not extract_audio(video_path, audio_path):
-                print("  音频提取失败，尝试直接转写视频文件")
                 audio_path = video_path
+                print("跳过（直接使用视频文件）")
             else:
                 audio_size = os.path.getsize(audio_path) / (1024 * 1024)
-                print(f"  音频已提取（{audio_size:.1f} MB）")
+                print(f"完成（{audio_size:.1f} MB）")
 
-            # 如果用户不需要视频，删掉
-            if not download_video and os.path.exists(video_path) and audio_path != video_path:
-                os.remove(video_path)
-                print("  已删除视频文件（仅保留音频）")
+            # 视频默认保留在 raw/ 目录
 
         # 语音转文字
-        transcript = transcribe_audio(audio_path)
+        import warnings
+        print("· 语音转文字...", end="", flush=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            transcript = transcribe_audio(audio_path)
         if not transcript:
-            print("错误: 无法提取视频文字内容")
+            print("失败")
             sys.exit(1)
+        print(f"完成（{len(transcript)} 字）")
 
         # 保存字幕
         with open(transcript_path, "w", encoding="utf-8") as f:
             f.write(transcript)
-        print(f"  字幕已保存: {transcript_path}")
-
-    # 如果用户要求下载视频但之前没下载
-    if download_video and not has_video and not os.path.exists(video_path):
-        print("正在下载视频...")
-        size = download_file(video_url, video_path)
-        if size > 0:
-            print(f"  视频已下载（{size:.1f} MB）")
 
     # 获取评论（如果还没有）
     comments_json_path = os.path.join(raw_dir, "comments.json")
     comments_txt_path = os.path.join(raw_dir, "comments.txt")
     if not os.path.exists(comments_json_path):
-        comments = asyncio.run(fetch_comments(args.url, video_author=author_name))
+        print("· 获取评论...", end="", flush=True)
+        comments = asyncio.run(fetch_comments(clean_url, video_author=author_name))
         if comments:
             save_comments(comments, raw_dir)
+            print(f"完成（{len(comments)} 条）")
+        else:
+            print("无评论")
     else:
-        print("检测到已有评论，跳过获取")
+        print("· 检测到已有评论，跳过获取")
 
     # 生成补充信息模板（如果不存在）
     notes_path = os.path.join(supplements_dir, "notes.md")
     if not os.path.exists(notes_path):
         with open(notes_path, "w", encoding="utf-8") as f:
             f.write(f"# 补充信息\n\n")
-            f.write(f"视频链接: {args.url}\n\n")
+            f.write(f"视频链接: {clean_url}\n\n")
             f.write(f"## 备注\n\n（在这里添加你的补充信息：截图描述、评论摘录、相关链接等）\n")
 
     # 读取评论文本（参与 AI 总结）
@@ -741,29 +760,98 @@ def main():
         comments_text = Path(comments_txt_path).read_text(encoding="utf-8").strip()
 
     # AI 总结
+    summary_version = None
     if not args.no_ai and config.get("api_key"):
+        print("· AI 总结...")
         supplements_text = load_supplements(supplements_dir)
-        # 评论单独传入，和用户补充信息区分
         summary = ai_summarize(transcript, supplements_text, config, comments_text=comments_text, video_info=video_info)
         if summary:
-            # 替换链接占位符
-            summary = summary.replace("（由调用方填入）", args.url)
-            version = get_next_version(output_dir)
-            summary_path = os.path.join(output_dir, f"{version}.md")
+            summary = summary.replace("（由调用方填入）", clean_url)
+            summary_version = get_next_version(output_dir)
+            summary_path = os.path.join(output_dir, f"{summary_version}.md")
             with open(summary_path, "w", encoding="utf-8") as f:
                 f.write(f"# {title}\n\n{summary}\n")
-            print(f"  总结已保存: {summary_path}")
+            print("  完成")
+        else:
+            print("  失败")
     elif not args.no_ai and not config.get("api_key"):
-        print("未配置 AI（跳过总结，只保留原始字幕）")
+        print("· 未配置 AI 模型，无法生成总结。")
+        print("")
+        try:
+            choice = input("是否现在配置？(y/n) [默认 y]：").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            choice = "n"
 
-    # 输出汇总
-    print(f"\n完成！文件保存在: {project_dir}/")
-    print(f"  raw/          ← 原始音频和字幕")
-    print(f"  supplements/  ← 补充信息（可手动编辑 notes.md）")
-    print(f"  output/       ← AI 总结文档")
+        if choice in ("", "y", "yes"):
+            print("")
+            print("请填写 AI 模型信息（用于将视频内容总结为结构化文档）：")
+            print("")
+            print("  api_base: AI 服务的接口地址")
+            print("    豆包（火山方舟）: https://ark.cn-beijing.volces.com/api/v3")
+            print("    OpenAI:          https://api.openai.com/v1")
+            print("    DeepSeek:        https://api.deepseek.com/v1")
+            print("")
 
-    if not args.no_ai and config.get("api_key"):
-        print(f"\n如需补充信息后重新生成，编辑 supplements/ 下的文件后重新执行命令，")
+            try:
+                api_base = input("  api_base: ").strip()
+                api_key = input("  api_key:  ").strip()
+                model = input("  model（模型名称，如 doubao-seed-2-0-mini-260215）: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                api_base = ""
+
+            if api_base and api_key and model:
+                config["api_base"] = api_base
+                config["api_key"] = api_key
+                config["model"] = model
+
+                # 保存到 config.json
+                config_path = os.path.join(SCRIPT_DIR, "..", "config.json")
+                with open(config_path, "w", encoding="utf-8") as f:
+                    json.dump(config, f, ensure_ascii=False, indent=2)
+                print(f"\n  已保存配置，下次无需重复填写。")
+                print("")
+
+                # 执行 AI 总结
+                print("· AI 总结...")
+                supplements_text = load_supplements(supplements_dir)
+                summary = ai_summarize(transcript, supplements_text, config, comments_text=comments_text, video_info=video_info)
+                if summary:
+                    summary = summary.replace("（由调用方填入）", clean_url)
+                    summary_version = get_next_version(output_dir)
+                    summary_path = os.path.join(output_dir, f"{summary_version}.md")
+                    with open(summary_path, "w", encoding="utf-8") as f:
+                        f.write(f"# {title}\n\n{summary}\n")
+                    print("  完成")
+                else:
+                    print("  失败")
+            else:
+                print("\n  配置不完整，跳过 AI 总结。")
+        else:
+            print("· 跳过 AI 总结")
+
+    # 输出结果
+    raw_contents = []
+    if os.path.exists(transcript_path):
+        raw_contents.append("字幕")
+    if os.path.exists(audio_path):
+        raw_contents.append("音频")
+    if os.path.exists(video_path):
+        raw_contents.append("视频")
+    if os.path.exists(comments_txt_path):
+        raw_contents.append("评论")
+
+    output_file = f"{summary_version}.md" if summary_version else "（未生成）"
+
+    print("")
+    print("── 输出结果 ──────────────────")
+    print(f"  {project_dir}/")
+    print(f"  ├── raw/          {' · '.join(raw_contents)}")
+    print(f"  ├── supplements/  补充信息（可编辑）")
+    print(f"  └── output/       {output_file}")
+    print("")
+
+    if summary_version and not args.no_ai:
+        print(f"编辑 supplements/ 后重新执行，会生成新版本。")
         print(f"会自动生成新版本（v2、v3...）。")
 
 

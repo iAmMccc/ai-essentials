@@ -16,7 +16,7 @@ if [ -z "$SKILL_NAME" ]; then
   echo "可用的 Skills:"
   echo "  git-commit      自动分析 git diff，生成规范的中文 commit message"
   echo "  spm-local       SPM 本地依赖管理，绕过 Xcode 网络限制"
-  echo "  douyin-to-doc   抖音视频转 Markdown 文档"
+  echo "  douyin-video-notes   抖音视频智能总结，生成结构化笔记"
   echo ""
   echo "示例:"
   echo "  curl -sL ${BASE_URL}/install-skill.sh | bash -s git-commit"
@@ -71,7 +71,7 @@ case "$SKILL_NAME" in
   spm-local)
     FILES="SKILL.md packages.json.example scripts/fetch-packages.sh"
     ;;
-  douyin-to-doc)
+  douyin-video-notes)
     FILES="SKILL.md config.json.example run.sh scripts/douyin-to-doc.py scripts/douyin-login.py"
     ;;
   *)
@@ -149,7 +149,7 @@ case "$SKILL_NAME" in
       echo "Packages/ 目录已存在，跳过初始化。"
     fi
     ;;
-  douyin-to-doc)
+  douyin-video-notes)
     if [ ! -f "${SKILL_DIR}/config.json" ]; then
       cp "${SKILL_DIR}/config.json.example" "${SKILL_DIR}/config.json"
     fi
@@ -158,11 +158,11 @@ case "$SKILL_NAME" in
     echo "说明："
     echo "  输入抖音链接，自动提取语音内容，通过 AI 生成 Markdown 文档。"
     echo ""
-    echo "下一步："
-    echo "  1. ./${SKILL_DIR}/run.sh login          ← 首次扫码登录"
-    echo "  2. 编辑 ${SKILL_DIR}/config.json        ← 配置 AI 模型（可选）"
-    echo "  3. ./${SKILL_DIR}/run.sh \"抖音链接\"      ← 提取内容"
+    echo "用法："
+    echo "  ./${SKILL_DIR}/run.sh \"抖音链接\""
     echo ""
+    echo "首次使用会自动提示扫码登录。"
+    echo "AI 总结配置（可选）：编辑 ${SKILL_DIR}/config.json"
     echo "脚本会自动检测 Python 版本和依赖，缺少时会提示安装。"
     ;;
 esac

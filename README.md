@@ -56,10 +56,10 @@ curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-sk
 
 ### 效率工具
 
-#### 抖音视频转文档
+#### 抖音视频智能总结
 
-输入抖音链接，自动提取字幕或语音转文字，通过 AI 总结生成 Markdown 文档。支持自定义模型。[详细说明](skills/douyin-to-doc/)
+输入抖音链接，自动提取语音内容，通过 AI 生成结构化笔记。[详细说明](skills/douyin-video-notes/)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-to-doc
+curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-video-notes
 ```
