@@ -4,10 +4,11 @@
 
 ## 前置条件
 
-需要安装以下两个系统工具：
+需要安装以下两个系统工具（已安装可跳过）：
 
 ```bash
-brew install python@3.12 ffmpeg
+brew install python@3.12
+brew install ffmpeg
 ```
 
 ## 安装
