@@ -56,6 +56,14 @@ curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-sk
 curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s spm-local
 ```
 
+#### UI 走查助手
+
+对比 UI 设计稿与 App 截图，自动检查间距、对齐、颜色、字号等视觉差异，替代人工拉线对比。[使用说明](skills/ui-diff/README.md)
+
+```bash
+curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s ui-diff
+```
+
 ### 效率工具
 
 #### 智能笔记生成器
