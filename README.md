@@ -58,10 +58,10 @@ curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-sk
 
 ### 效率工具
 
-#### 抖音视频智能总结
+#### 智能笔记生成器
 
-输入抖音链接，自动生成结构化学习笔记。[使用说明](skills/douyin-video-notes/README.md)
+输入链接（抖音视频、微信公众号文章），自动生成结构化学习笔记。[使用说明](skills/smart-notes/README.md)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-video-notes
+curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s smart-notes
 ```
