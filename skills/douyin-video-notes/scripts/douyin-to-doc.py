@@ -40,151 +40,108 @@ def check_cookies():
     return True
 
 
-    # ask_download_mode 已移除，视频默认保留
+def extract_video_id(url):
+    """从各种抖音链接格式中提取视频 ID"""
+    # 去掉 zsh 转义
+    url = url.replace("\\?", "?").replace("\\=", "=").replace("\\&", "&")
+
+    # 搜索结果：真正的视频 ID 在 modal_id 参数里
+    modal_match = re.search(r"modal_id=(\d+)", url)
+    if modal_match:
+        return modal_match.group(1)
+
+    # 标准链接：/video/数字ID
+    match = re.search(r"/video/(\d+)", url)
+    if match:
+        return match.group(1)
+
+    return None
 
 
-async def fetch_video_page(url):
-    """用 Playwright 打开抖音页面，提取视频信息"""
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        print("错误: 需要安装 playwright")
-        print("  pip install playwright && python -m playwright install chromium")
-        sys.exit(1)
+def resolve_short_url(url):
+    """解析抖音短链接（v.douyin.com），获取完整 URL 和视频 ID"""
+    if "v.douyin.com" in url or "iesdouyin.com" in url:
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
+            })
+            req.method = "HEAD"
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                final_url = resp.url
+                vid = extract_video_id(final_url)
+                if vid:
+                    return vid
+        except Exception:
+            pass
+    return extract_video_id(url)
 
-    with open(COOKIES_JSON, "r", encoding="utf-8") as f:
-        cookies = json.load(f)
+
+def fetch_video_info(video_id):
+    """通过移动端分享页获取视频元数据（无需登录）"""
 
     info = {
         "title": "douyin_video",
         "video_url": None,
         "author": "",
-        "followers": "",
-        "total_likes": "",
         "tags": [],
+        "likes": "",
+        "comments_count": "",
+        "favorites": "",
+        "shares": "",
         "publish_time": "",
     }
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
-        await context.add_cookies(cookies)
-        page = await context.new_page()
-
-        # 由调用方打印进度
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(8)
-
-        # 一次性从页面提取所有元数据
-        try:
-            page_data = await page.evaluate("""() => {
-    const data = {};
-
-    // 标题（从描述区提取，包含 hashtag）
-    const descEl = document.querySelector('[data-e2e="video-desc"]');
-    data.raw_title = descEl ? descEl.innerText.trim() : '';
-    if (!data.raw_title) {
-        const ogTitle = document.querySelector('meta[property="og:title"]');
-        data.raw_title = ogTitle ? ogTitle.content : '';
-    }
-    if (!data.raw_title) {
-        const titleEl = document.querySelector('title');
-        data.raw_title = titleEl ? titleEl.innerText.split(' - ')[0].trim() : '';
-    }
-
-    // 作者信息：查找包含「粉丝」和「获赞」的区域
-    data.author = '';
-    data.followers = '';
-    data.total_likes = '';
-    const allDivs = document.querySelectorAll('div');
-    for (const div of allDivs) {
-        const t = div.innerText || '';
-        if (t.includes('粉丝') && t.includes('获赞') && t.length < 100) {
-            const m = t.match(/^(.+?)粉丝(\\d+)获赞(\\d+)/);
-            if (m) {
-                data.author = m[1].trim();
-                data.followers = m[2];
-                data.total_likes = m[3];
-            }
-            break;
-        }
-    }
-
-    // 发布时间：从页面底部查找
-    data.publish_time = '';
-    const body = document.body.innerText;
-    const timeMatch = body.match(/发布时间[：:]\\s*([\\d-]+\\s*[\\d:]*)/);
-    if (timeMatch) data.publish_time = timeMatch[1].trim();
-
-    // 视频地址
-    const videoSource = document.querySelector('video source');
-    if (videoSource && videoSource.src) {
-        data.video_url = videoSource.src;
-    } else {
-        const videoEl = document.querySelector('video');
-        if (videoEl && videoEl.src && videoEl.src.startsWith('http')) {
-            data.video_url = videoEl.src;
-        }
-    }
-
-    if (!data.video_url) {
-        const scripts = document.querySelectorAll('script');
-        for (const s of scripts) {
-            const text = s.textContent || '';
-            if (text.includes('playAddr') || text.includes('play_addr')) {
-                try {
-                    const match = text.match(/"playApi"\\s*:\\s*"([^"]+)"/);
-                    if (match) { data.video_url = match[1]; break; }
-                } catch(e) {}
-            }
-        }
-    }
-
-    if (!data.video_url) {
-        const renderData = document.getElementById('RENDER_DATA');
-        if (renderData) {
-            try {
-                const decoded = decodeURIComponent(renderData.textContent);
-                const match = decoded.match(/"playApi"\\s*:\\s*"([^"]+)"/);
-                if (match) data.video_url = match[1];
-            } catch(e) {}
-        }
-    }
-
-    return data;
-}""")
-        except Exception:
-            page_data = {}
-
-        await browser.close()
-
-        # 处理提取结果
-        raw_title = page_data.get("raw_title", "") or "douyin_video"
-
-        # 从标题中分离 hashtag 作为标签
-        tags = re.findall(r"#(\S+)", raw_title)
-        clean_title = re.sub(r"\s*#\S+", "", raw_title).strip()
-        if not clean_title:
-            clean_title = "douyin_video"
-
-        # 清理文件名
-        clean_title = re.sub(r'[\\/:*?"<>|\n\r]', '_', clean_title).strip()
-        if len(clean_title) > 80:
-            clean_title = clean_title[:80]
-
-        video_url = page_data.get("video_url")
-        if video_url and not video_url.startswith("http"):
-            video_url = "https:" + video_url if video_url.startswith("//") else "https://www.douyin.com" + video_url
-
-        info["title"] = clean_title
-        info["video_url"] = video_url
-        info["author"] = page_data.get("author", "")
-        info["followers"] = page_data.get("followers", "")
-        info["total_likes"] = page_data.get("total_likes", "")
-        info["tags"] = tags
-        info["publish_time"] = page_data.get("publish_time", "")
-
+    # 请求移动端分享页（无需登录）
+    share_url = f"https://www.iesdouyin.com/share/video/{video_id}/"
+    try:
+        req = urllib.request.Request(share_url, headers={
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        print(f"  请求失败: {e}")
         return info
+
+    # 提取元数据
+    def extract(pattern, text, default=""):
+        m = re.search(pattern, text)
+        return m.group(1) if m else default
+
+    raw_desc = extract(r'"desc":"([^"]*)"', html)
+    info["author"] = extract(r'"nickname":"([^"]*)"', html)
+    info["likes"] = extract(r'"digg_count":(\d+)', html)
+    info["comments_count"] = extract(r'"comment_count":(\d+)', html)
+    info["favorites"] = extract(r'"collect_count":(\d+)', html)
+    info["shares"] = extract(r'"share_count":(\d+)', html)
+
+    # 发布时间
+    create_time = extract(r'"create_time":(\d+)', html)
+    if create_time:
+        from datetime import datetime
+        info["publish_time"] = datetime.fromtimestamp(int(create_time)).strftime("%Y-%m-%d %H:%M")
+
+    # 从描述中分离标题和标签
+    tags = re.findall(r"#(\S+)", raw_desc)
+    clean_title = re.sub(r"\s*#\S+", "", raw_desc).strip()
+    if not clean_title:
+        clean_title = "douyin_video"
+    clean_title = re.sub(r'[\\/:*?"<>|\n\r]', '_', clean_title).strip()
+    if len(clean_title) > 80:
+        clean_title = clean_title[:80]
+
+    info["title"] = clean_title
+    info["tags"] = tags
+
+    # 视频下载地址
+    play_match = re.search(r'"play_addr":\{[^}]*"url_list":\["([^"]+)"', html)
+    if play_match:
+        video_url = play_match.group(1).replace("\\u002F", "/")
+        if not video_url.startswith("http"):
+            video_url = "https:" + video_url
+        info["video_url"] = video_url
+
+    return info
 
 
 async def fetch_comments(url, video_author="", max_scroll=5):
@@ -475,14 +432,13 @@ def ai_summarize(text, supplements_text, config, comments_text="", video_info=No
     vi = video_info or {}
     meta_lines = [f"- 链接：（由调用方填入）"]
     if vi.get("author"):
-        author_info = vi["author"]
-        if vi.get("followers"):
-            author_info += f"（粉丝 {vi['followers']}，获赞 {vi['total_likes']}）"
-        meta_lines.append(f"- 作者：{author_info}")
+        meta_lines.append(f"- 作者：{vi['author']}")
     if vi.get("publish_time"):
         meta_lines.append(f"- 发布时间：{vi['publish_time']}")
     if vi.get("tags"):
         meta_lines.append(f"- 标签：{'、'.join(vi['tags'])}")
+    if vi.get("likes"):
+        meta_lines.append(f"- 数据：{vi['likes']} 赞 · {vi['comments_count']} 评论 · {vi['favorites']} 收藏 · {vi['shares']} 转发")
     meta_lines.append(f"- 生成依据：{basis}")
     meta_block = "\n".join(meta_lines)
 
@@ -617,26 +573,6 @@ def get_next_version(output_dir):
     return f"v{max(nums) + 1}" if nums else "v1"
 
 
-def normalize_douyin_url(url):
-    """从各种抖音链接格式中提取视频 ID，转为标准 URL"""
-    # 去掉 zsh 转义
-    url = url.replace("\\?", "?").replace("\\=", "=").replace("\\&", "&")
-
-    # 搜索结果链接：真正的视频 ID 在 modal_id 参数里
-    modal_match = re.search(r"modal_id=(\d+)", url)
-    if modal_match:
-        video_id = modal_match.group(1)
-        return f"https://www.douyin.com/video/{video_id}"
-
-    # 标准链接：/video/数字ID
-    match = re.search(r"/video/(\d+)", url)
-    if match:
-        video_id = match.group(1)
-        return f"https://www.douyin.com/video/{video_id}"
-
-    # 其他格式，原样返回
-    return url
-
 
 def main():
     parser = argparse.ArgumentParser(description="抖音视频转 Markdown 文档")
@@ -654,24 +590,6 @@ def main():
         print("安装: brew install ffmpeg")
         sys.exit(1)
 
-    # 检查 Cookie，没有则提示登录
-    if not check_cookies():
-        print("未检测到抖音登录信息，需要先扫码登录。")
-        try:
-            choice = input("是否现在登录？(y/n) [默认 y]：").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            choice = "n"
-        if choice in ("", "y", "yes"):
-            import subprocess as _sp
-            login_script = os.path.join(SCRIPT_DIR, "douyin-login.py")
-            result = _sp.run([sys.executable, login_script])
-            if result.returncode != 0 or not check_cookies():
-                print("登录失败，请重试")
-                sys.exit(1)
-            print("")  # 空行分隔
-        else:
-            sys.exit(1)
-
     # 加载配置
     config = load_config()
     if args.api_base:
@@ -681,31 +599,37 @@ def main():
     if args.model:
         config["model"] = args.model
 
-    # 清洗 URL
-    clean_url = normalize_douyin_url(args.url)
-    if clean_url != args.url:
-        print(f"· 已转换链接: {clean_url}")
+    # 解析视频 ID
+    print(f"· 解析链接...", end="", flush=True)
+    video_id = resolve_short_url(args.url)
+    if not video_id:
+        video_id = extract_video_id(args.url)
+    if not video_id:
+        print("失败（无法提取视频 ID）")
+        sys.exit(1)
+    clean_url = f"https://www.douyin.com/video/{video_id}"
+    print(f"完成")
 
-    # 解析页面
-    print(f"· 正在加载页面...")
-    video_info = asyncio.run(fetch_video_page(clean_url))
+    # 获取视频元数据（无需登录）
+    print(f"· 获取视频信息...", end="", flush=True)
+    video_info = fetch_video_info(video_id)
     title = video_info["title"]
     video_url = video_info["video_url"]
     author_name = video_info["author"]
 
     if not video_url:
-        print("错误: 无法从页面提取视频地址")
+        print("失败（无法获取视频地址）")
         sys.exit(1)
+    print("完成")
 
     # 视频信息
     print("")
     print("── 视频信息 ──────────────────")
     print(f"  标题: {title}")
     if author_name:
-        author_extra = ""
-        if video_info["followers"]:
-            author_extra = f"（粉丝 {video_info['followers']}，获赞 {video_info['total_likes']}）"
-        print(f"  作者: {author_name}{author_extra}")
+        print(f"  作者: {author_name}")
+    if video_info["likes"]:
+        print(f"  数据: {video_info['likes']} 赞 · {video_info['comments_count']} 评论 · {video_info['favorites']} 收藏 · {video_info['shares']} 转发")
     if video_info["tags"]:
         print(f"  标签: {', '.join(video_info['tags'])}")
     if video_info["publish_time"]:
@@ -771,17 +695,20 @@ def main():
         with open(transcript_path, "w", encoding="utf-8") as f:
             f.write(transcript)
 
-    # 获取评论（如果还没有）
+    # 获取评论（需要登录，可选）
     comments_json_path = os.path.join(raw_dir, "comments.json")
     comments_txt_path = os.path.join(raw_dir, "comments.txt")
     if not os.path.exists(comments_json_path):
-        print("· 获取评论...", end="", flush=True)
-        comments = asyncio.run(fetch_comments(clean_url, video_author=author_name))
-        if comments:
-            save_comments(comments, raw_dir)
-            print(f"完成（{len(comments)} 条）")
+        if check_cookies():
+            print("· 获取评论...", end="", flush=True)
+            comments = asyncio.run(fetch_comments(clean_url, video_author=author_name))
+            if comments:
+                save_comments(comments, raw_dir)
+                print(f"完成（{len(comments)} 条）")
+            else:
+                print("无评论")
         else:
-            print("无评论")
+            print("· 跳过评论获取（未登录）")
     else:
         print("· 检测到已有评论，跳过获取")
 
