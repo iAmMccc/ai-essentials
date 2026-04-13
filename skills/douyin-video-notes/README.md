@@ -42,7 +42,7 @@ curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-sk
     ↓
 自动下载视频 → 提取音频 → 语音转文字
     ↓
-询问：是否登录抖音获取评论？（可跳过）
+询问：是否登录抖音获取评论？（可跳过，Cookie 仅保存在本地）
     ↓
 询问：是否配置 AI 生成总结？（可跳过，填错可重试）
     ↓
