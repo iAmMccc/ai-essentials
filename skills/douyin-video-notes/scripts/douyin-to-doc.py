@@ -589,6 +589,47 @@ def get_next_version(output_dir):
 
 
 
+def _interactive_config_ai(config):
+    """交互式引导配置 AI 模型"""
+    print("")
+    print("请填写 AI 模型信息：")
+    print("")
+    print("  api_base — AI 服务的接口地址，例如：")
+    print("    豆包: https://ark.cn-beijing.volces.com/api/v3")
+    print("    DeepSeek: https://api.deepseek.com/v1")
+    print("    OpenAI: https://api.openai.com/v1")
+    print("")
+
+    try:
+        api_base = input("  api_base: ").strip()
+        if not api_base:
+            print("  已跳过")
+            return config
+        api_key = input("  api_key（API 密钥）: ").strip()
+        if not api_key:
+            print("  已跳过")
+            return config
+        model = input("  model（模型名称）: ").strip()
+        if not model:
+            print("  已跳过")
+            return config
+    except (EOFError, KeyboardInterrupt):
+        print("\n  已跳过")
+        return config
+
+    config["api_base"] = api_base
+    config["api_key"] = api_key
+    config["model"] = model
+
+    # 保存到 config.json
+    config_path = os.path.join(SCRIPT_DIR, "..", "config.json")
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump({"api_base": api_base, "api_key": api_key, "model": model}, f, ensure_ascii=False, indent=2)
+    print(f"  已保存，下次无需重复填写。")
+
+    return config
+
+
 def main():
     parser = argparse.ArgumentParser(description="抖音视频转 Markdown 文档")
     parser.add_argument("url", help="抖音视频链接")
@@ -708,24 +749,40 @@ def main():
         with open(transcript_path, "w", encoding="utf-8") as f:
             f.write(transcript)
 
-    # 获取评论（需要登录，可选）
+    # ── 交互阶段：登录获取评论 ──
     comments_json_path = os.path.join(raw_dir, "comments.json")
     comments_txt_path = os.path.join(raw_dir, "comments.txt")
+
     if not os.path.exists(comments_json_path):
-        if check_cookies():
-            print("· 获取评论...", end="", flush=True)
-            comments = asyncio.run(fetch_comments(clean_url, video_author=author_name))
-            if comments:
-                save_comments(comments, raw_dir)
-                print(f"完成（{len(comments)} 条）")
-            else:
-                print("无评论")
+        print("")
+        try:
+            choice = input("是否登录抖音获取评论内容？(y/n) [默认 n]：").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            choice = "n"
+
+        if choice in ("y", "yes"):
+            if not check_cookies():
+                print("· 正在启动登录...")
+                import subprocess as _sp
+                login_script = os.path.join(SCRIPT_DIR, "douyin-login.py")
+                result = _sp.run([sys.executable, login_script])
+                if result.returncode != 0 or not check_cookies():
+                    print("  登录失败，跳过评论获取")
+
+            if check_cookies():
+                print("· 获取评论...", end="", flush=True)
+                comments = asyncio.run(fetch_comments(clean_url, video_author=author_name))
+                if comments:
+                    save_comments(comments, raw_dir)
+                    print(f"完成（{len(comments)} 条）")
+                else:
+                    print("无评论")
         else:
-            print("· 跳过评论获取（未登录）")
+            print("· 跳过评论获取")
     else:
         print("· 检测到已有评论，跳过获取")
 
-    # 生成补充信息模板（如果不存在）
+    # 生成补充信息模板
     extra_path = os.path.join(supplements_dir, "extra.md")
     if not os.path.exists(extra_path):
         with open(extra_path, "w", encoding="utf-8") as f:
@@ -733,78 +790,56 @@ def main():
             f.write(f"视频链接: {clean_url}\n\n")
             f.write(f"（在这里添加额外信息：GitHub 地址、工具名称、关键截图描述、相关链接等）\n")
 
-    # 读取评论文本（参与 AI 总结）
+    # 读取评论文本
     comments_text = ""
     if os.path.exists(comments_txt_path):
         comments_text = Path(comments_txt_path).read_text(encoding="utf-8").strip()
 
-    # AI 总结
+    # ── 交互阶段：配置 AI 总结 ──
     summary_version = None
-    if not args.no_ai and config.get("api_key"):
-        print("· AI 总结...")
-        supplements_text = load_supplements(supplements_dir)
-        summary = ai_summarize(transcript, supplements_text, config, comments_text=comments_text, video_info=video_info)
-        if summary:
-            summary = summary.replace("（由调用方填入）", clean_url)
-            summary_version = get_next_version(output_dir)
-            summary_path = os.path.join(output_dir, f"{summary_version}.md")
-            with open(summary_path, "w", encoding="utf-8") as f:
-                f.write(f"# {title}\n\n{summary}\n")
-            print("  完成")
-        else:
-            print("  失败")
-    elif not args.no_ai and not config.get("api_key"):
-        print("· 未配置 AI 模型，无法生成总结。")
-        print("")
-        try:
-            choice = input("是否配置 AI 模型进行内容总结？(y/n) [默认 y]：").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            choice = "n"
-
-        if choice in ("", "y", "yes"):
+    if not args.no_ai:
+        if not config.get("api_key"):
             print("")
-            print("请填写 AI 模型信息（用于将视频内容总结为结构化文档）：")
-            print("")
-            print("  api_base: AI 服务的接口地址")
-            print("    豆包（火山方舟）: https://ark.cn-beijing.volces.com/api/v3")
-            print("    OpenAI:          https://api.openai.com/v1")
-            print("    DeepSeek:        https://api.deepseek.com/v1")
-            print("")
-
             try:
-                api_base = input("  api_base: ").strip()
-                api_key = input("  api_key:  ").strip()
-                model = input("  model（模型名称，如 doubao-seed-2-0-mini-260215）: ").strip()
+                choice = input("是否配置 AI 模型生成总结？(y/n) [默认 n]：").strip().lower()
             except (EOFError, KeyboardInterrupt):
-                api_base = ""
+                choice = "n"
 
-            if api_base and api_key and model:
-                config["api_base"] = api_base
-                config["api_key"] = api_key
-                config["model"] = model
+            if choice in ("y", "yes"):
+                config = _interactive_config_ai(config)
 
-                # 保存到 config.json
-                config_path = os.path.join(SCRIPT_DIR, "..", "config.json")
-                with open(config_path, "w", encoding="utf-8") as f:
-                    json.dump(config, f, ensure_ascii=False, indent=2)
-                print(f"\n  已保存配置，下次无需重复填写。")
-                print("")
-
-                # 执行 AI 总结
-                print("· AI 总结...")
-                supplements_text = load_supplements(supplements_dir)
-                summary = ai_summarize(transcript, supplements_text, config, comments_text=comments_text, video_info=video_info)
-                if summary:
-                    summary = summary.replace("（由调用方填入）", clean_url)
-                    summary_version = get_next_version(output_dir)
-                    summary_path = os.path.join(output_dir, f"{summary_version}.md")
-                    with open(summary_path, "w", encoding="utf-8") as f:
-                        f.write(f"# {title}\n\n{summary}\n")
-                    print("  完成")
-                else:
-                    print("  失败")
+        if config.get("api_key"):
+            print("· AI 总结...")
+            supplements_text = load_supplements(supplements_dir)
+            summary = ai_summarize(transcript, supplements_text, config, comments_text=comments_text, video_info=video_info)
+            if summary:
+                summary = summary.replace("（由调用方填入）", clean_url)
+                summary_version = get_next_version(output_dir)
+                summary_path = os.path.join(output_dir, f"{summary_version}.md")
+                with open(summary_path, "w", encoding="utf-8") as f:
+                    f.write(f"# {title}\n\n{summary}\n")
+                print("  完成")
             else:
-                print("\n  配置不完整，跳过 AI 总结。")
+                print("  失败，请检查 API 配置")
+                print("")
+                try:
+                    retry = input("是否重新配置？(y/n) [默认 n]：").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    retry = "n"
+                if retry in ("y", "yes"):
+                    config = _interactive_config_ai(config)
+                    if config.get("api_key"):
+                        print("· AI 总结（重试）...")
+                        summary = ai_summarize(transcript, supplements_text, config, comments_text=comments_text, video_info=video_info)
+                        if summary:
+                            summary = summary.replace("（由调用方填入）", clean_url)
+                            summary_version = get_next_version(output_dir)
+                            summary_path = os.path.join(output_dir, f"{summary_version}.md")
+                            with open(summary_path, "w", encoding="utf-8") as f:
+                                f.write(f"# {title}\n\n{summary}\n")
+                            print("  完成")
+                        else:
+                            print("  仍然失败，跳过 AI 总结")
         else:
             print("· 跳过 AI 总结")
 
