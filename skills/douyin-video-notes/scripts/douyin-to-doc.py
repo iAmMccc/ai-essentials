@@ -40,12 +40,18 @@ def check_cookies():
     return True
 
 
+def extract_url_from_text(text):
+    """从分享文本中提取 URL"""
+    match = re.search(r"https?://[^\s]+", text)
+    return match.group(0).rstrip("/") if match else text
+
+
 def extract_video_id(url):
     """从各种抖音链接格式中提取视频 ID"""
     # 去掉 zsh 转义
-    url = url.replace("\\?", "?").replace("\\=", "=").replace("\\&", "&")
+    url = url.replace(r"\?", "?").replace(r"\=", "=").replace(r"\&", "&")
 
-    # 搜索结果：真正的视频 ID 在 modal_id 参数里
+    # 精选页 / 搜索结果：视频 ID 在 modal_id 参数里
     modal_match = re.search(r"modal_id=(\d+)", url)
     if modal_match:
         return modal_match.group(1)
@@ -58,14 +64,22 @@ def extract_video_id(url):
     return None
 
 
-def resolve_short_url(url):
-    """解析抖音短链接（v.douyin.com），获取完整 URL 和视频 ID"""
+def resolve_video_id(raw_input):
+    """从任意格式的输入中解析出视频 ID"""
+    # 先从文本中提取 URL（处理分享文本）
+    url = extract_url_from_text(raw_input)
+
+    # 直接尝试提取 video ID（标准链接、精选页、搜索结果）
+    vid = extract_video_id(url)
+    if vid:
+        return vid
+
+    # 短链接：需要重定向解析
     if "v.douyin.com" in url or "iesdouyin.com" in url:
         try:
             req = urllib.request.Request(url, headers={
                 "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
             })
-            req.method = "HEAD"
             with urllib.request.urlopen(req, timeout=10) as resp:
                 final_url = resp.url
                 vid = extract_video_id(final_url)
@@ -73,7 +87,8 @@ def resolve_short_url(url):
                     return vid
         except Exception:
             pass
-    return extract_video_id(url)
+
+    return None
 
 
 def fetch_video_info(video_id):
@@ -601,9 +616,7 @@ def main():
 
     # 解析视频 ID
     print(f"· 解析链接...", end="", flush=True)
-    video_id = resolve_short_url(args.url)
-    if not video_id:
-        video_id = extract_video_id(args.url)
+    video_id = resolve_video_id(args.url)
     if not video_id:
         print("失败（无法提取视频 ID）")
         sys.exit(1)
