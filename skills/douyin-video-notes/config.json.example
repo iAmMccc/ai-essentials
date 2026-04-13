@@ -1,7 +1,0 @@
-{
-  "_说明": "AI 总结的模型配置，首次使用时脚本会引导填写，也可以手动编辑此文件",
-  "_api_base_示例": "豆包: https://ark.cn-beijing.volces.com/api/v3 | OpenAI: https://api.openai.com/v1 | DeepSeek: https://api.deepseek.com/v1",
-  "api_base": "",
-  "api_key": "",
-  "model": ""
-}
