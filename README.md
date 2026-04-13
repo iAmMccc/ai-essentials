@@ -60,7 +60,7 @@ curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-sk
 
 #### 抖音视频智能总结
 
-输入抖音链接，自动提取语音内容，通过 AI 生成结构化笔记。[详细说明](skills/douyin-video-notes/)
+输入抖音链接，自动生成结构化学习笔记。[使用说明](skills/douyin-video-notes/README.md)
 
 ```bash
 curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s douyin-video-notes
