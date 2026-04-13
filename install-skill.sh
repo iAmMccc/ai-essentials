@@ -17,6 +17,7 @@ if [ -z "$SKILL_NAME" ]; then
   echo "  git-commit      自动分析 git diff，生成规范的中文 commit message"
   echo "  spm-local       SPM 本地依赖管理，绕过 Xcode 网络限制"
   echo "  smart-notes     智能笔记生成器，支持抖音/微信公众号"
+  echo "  ui-diff         对比 UI 设计稿与 App 截图，检查间距/对齐/样式差异"
   echo ""
   echo "示例:"
   echo "  curl -sL ${BASE_URL}/install-skill.sh | bash -s git-commit"
@@ -36,19 +37,46 @@ if [ -z "$INSTALL_TYPE" ]; then
   exit 1
 fi
 
-# 根据 type 决定安装目录
+# 检查两个目录是否指向同一位置（软链接或相同真实路径）
+same_skills_dir() {
+  local dir1="$1" dir2="$2"
+  # 目录不存在则不同
+  [ -d "$dir1" ] && [ -d "$dir2" ] || return 1
+  # 比较真实路径
+  local real1 real2
+  real1=$(cd "$dir1" 2>/dev/null && pwd -P)
+  real2=$(cd "$dir2" 2>/dev/null && pwd -P)
+  [ "$real1" = "$real2" ]
+}
+
+# 根据 type 决定安装目录列表
+SKILL_DIRS=""
 case "$INSTALL_TYPE" in
   ai-tool)
-    if [ -d ".claude" ]; then
-      SKILL_DIR=".claude/skills/${SKILL_NAME}"
-    elif [ -d ".cursor" ]; then
-      SKILL_DIR=".cursor/skills/${SKILL_NAME}"
+    has_claude=false
+    has_cursor=false
+    [ -d ".claude" ] && has_claude=true
+    [ -d ".cursor" ] && has_cursor=true
+
+    if $has_claude && $has_cursor; then
+      # 两个都有，检查 skills 目录是否指向同一位置
+      mkdir -p .claude/skills .cursor/skills 2>/dev/null
+      if same_skills_dir ".claude/skills" ".cursor/skills"; then
+        echo "检测到 .cursor/skills 与 .claude/skills 指向同一目录，只安装一份"
+        SKILL_DIRS=".claude/skills/${SKILL_NAME}"
+      else
+        SKILL_DIRS=".claude/skills/${SKILL_NAME} .cursor/skills/${SKILL_NAME}"
+      fi
+    elif $has_claude; then
+      SKILL_DIRS=".claude/skills/${SKILL_NAME}"
+    elif $has_cursor; then
+      SKILL_DIRS=".cursor/skills/${SKILL_NAME}"
     else
-      SKILL_DIR=".claude/skills/${SKILL_NAME}"
+      SKILL_DIRS=".claude/skills/${SKILL_NAME}"
     fi
     ;;
   standalone)
-    SKILL_DIR="${SKILL_NAME}"
+    SKILL_DIRS="${SKILL_NAME}"
     ;;
   *)
     echo "错误: 未知的安装类型 '${INSTALL_TYPE}'"
@@ -74,39 +102,50 @@ case "$SKILL_NAME" in
   smart-notes)
     FILES="SKILL.md README.md config.json.example install.conf run.sh scripts/main.py scripts/summarizer.py scripts/output.py scripts/douyin-login.py scripts/platforms/__init__.py scripts/platforms/douyin.py scripts/platforms/wechat.py"
     ;;
+  ui-diff)
+    FILES="SKILL.md"
+    ;;
   *)
     FILES="SKILL.md"
     ;;
 esac
 
-# 下载文件
+# 下载文件到所有目标目录
 fail=0
-for file in $FILES; do
-  dir=$(dirname "$file")
-  if [ "$dir" != "." ]; then
-    mkdir -p "${SKILL_DIR}/${dir}"
-  else
-    mkdir -p "${SKILL_DIR}"
-  fi
-
-  curl -sL "${SKILL_BASE}/${file}" -o "${SKILL_DIR}/${file}"
-  if [ $? -ne 0 ]; then
-    echo "  下载失败: ${file}"
-    fail=1
-  else
-    if [[ "$file" == *.sh ]]; then
-      chmod +x "${SKILL_DIR}/${file}"
+for SKILL_DIR in $SKILL_DIRS; do
+  for file in $FILES; do
+    dir=$(dirname "$file")
+    if [ "$dir" != "." ]; then
+      mkdir -p "${SKILL_DIR}/${dir}"
+    else
+      mkdir -p "${SKILL_DIR}"
     fi
-  fi
+
+    curl -sL "${SKILL_BASE}/${file}" -o "${SKILL_DIR}/${file}"
+    if [ $? -ne 0 ]; then
+      echo "  下载失败: ${file}"
+      fail=1
+    else
+      if [[ "$file" == *.sh ]]; then
+        chmod +x "${SKILL_DIR}/${file}"
+      fi
+    fi
+  done
 done
 
 # 验证
-if [ "$fail" -eq 0 ] && [ -f "${SKILL_DIR}/SKILL.md" ]; then
+if [ "$fail" -eq 0 ]; then
   file_count=$(echo "$FILES" | wc -w | tr -d ' ')
-  echo "已安装到 ${SKILL_DIR}/（${file_count} 个文件）"
+  for SKILL_DIR in $SKILL_DIRS; do
+    if [ -f "${SKILL_DIR}/SKILL.md" ]; then
+      echo "已安装到 ${SKILL_DIR}/（${file_count} 个文件）"
+    fi
+  done
 else
   echo "安装失败，请检查网络连接"
-  rm -rf "$SKILL_DIR"
+  for SKILL_DIR in $SKILL_DIRS; do
+    rm -rf "$SKILL_DIR"
+  done
   exit 1
 fi
 
