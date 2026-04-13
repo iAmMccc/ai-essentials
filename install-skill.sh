@@ -72,8 +72,13 @@ case "$INSTALL_TYPE" in
     elif $has_cursor; then
       SKILL_DIRS=".cursor/skills/${SKILL_NAME}"
     else
-      SKILL_DIRS=".claude/skills/${SKILL_NAME}"
+      # 都没有，两个都装，兼容 Claude Code 和 Cursor
+      SKILL_DIRS=".claude/skills/${SKILL_NAME} .cursor/skills/${SKILL_NAME}"
     fi
+    ;;
+  root-md)
+    # 直接在根目录放 CLAUDE.md 和 AGENTS.md，兼容所有 AI 工具
+    ROOT_MD_MODE=true
     ;;
   standalone)
     SKILL_DIRS="${SKILL_NAME}"
@@ -91,6 +96,33 @@ if [ "$HTTP_CODE" != "200" ]; then
   exit 1
 fi
 
+# root-md 模式：下载 SKILL.md 内容，写入 CLAUDE.md 和 AGENTS.md
+if [ "${ROOT_MD_MODE}" = true ]; then
+  fail=0
+  curl -sL "${SKILL_BASE}/SKILL.md" -o "AGENTS.md"
+  if [ $? -ne 0 ]; then
+    echo "  下载失败: AGENTS.md"
+    fail=1
+  fi
+  echo "请遵循 AGENTS.md 中的所有规则。" > "CLAUDE.md"
+
+  if [ "$fail" -eq 0 ] && [ -f "AGENTS.md" ]; then
+    echo "已安装到当前目录："
+    echo "  CLAUDE.md   ← Claude Code 自动读取"
+    echo "  AGENTS.md   ← Cursor 自动读取"
+    mkdir -p images
+    echo ""
+    echo "下一步："
+    echo "  1. 在 images/ 下按页面建子文件夹，每个放 2 张图（设计稿 + 截图）"
+    echo "  2. 打开 Claude Code 或 Cursor，执行 /ui-diff images"
+  else
+    echo "安装失败，请检查网络连接"
+    rm -f "CLAUDE.md" "AGENTS.md"
+    exit 1
+  fi
+  exit 0
+fi
+
 # 每个 Skill 的文件清单
 case "$SKILL_NAME" in
   git-commit)
@@ -101,9 +133,6 @@ case "$SKILL_NAME" in
     ;;
   smart-notes)
     FILES="SKILL.md README.md config.json.example install.conf run.sh scripts/main.py scripts/summarizer.py scripts/output.py scripts/douyin-login.py scripts/platforms/__init__.py scripts/platforms/douyin.py scripts/platforms/wechat.py"
-    ;;
-  ui-diff)
-    FILES="SKILL.md"
     ;;
   *)
     FILES="SKILL.md"

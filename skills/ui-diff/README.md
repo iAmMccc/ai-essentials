@@ -6,17 +6,28 @@
 
 ## 安装
 
+新建一个文件夹，在里面执行：
+
 ```bash
 curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-skill.sh | bash -s ui-diff
 ```
 
-安装后自动放到当前项目的 `.claude/skills/`（或 `.cursor/skills/`），无需额外配置。
+安装后的目录结构：
+
+```
+ui-review/
+├── CLAUDE.md           ← Claude Code 自动读取
+├── AGENTS.md           ← Cursor 自动读取
+└── images/             ← 自动创建，放对比图片
+```
+
+不依赖 `.claude` 或 `.cursor` 隐藏目录，Claude Code 和 Cursor 都能直接使用。
 
 ## 使用
 
 ### 1. 批量对比（推荐）
 
-在项目中创建 `images` 目录，按页面建子文件夹，每个子文件夹放 2 张图：
+在 `images/` 下按页面建子文件夹，每个子文件夹放 2 张图：
 
 ```
 images/
@@ -28,7 +39,7 @@ images/
 │   └── screenshot.png
 ```
 
-然后执行：
+打开 Claude Code 或 Cursor，执行：
 
 ```
 /ui-diff images
