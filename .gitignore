@@ -1,3 +1,4 @@
 skills/douyin-to-doc/scripts/cookies.*
 .venv/
 __pycache__/
+output/
