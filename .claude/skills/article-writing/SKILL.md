@@ -1,8 +1,9 @@
 ---
 name: article-writing
 description: |
-  当用户要求写一篇新文章、优化已有文章、或讨论文章结构时使用。
-  适用于 ai-essentials 项目中所有文章的创建和修改。
+  为 ai-essentials 项目写文章、改文章时必须调用。包含强制性的写作风格和结构规范。
+  TRIGGER when: 用户说写文章、改文章、那篇文章；提到文章主题名+编辑意图（如 RAG 文章、MCP 文章、prompt 那篇、skills 那篇、rules 那篇）；要求对文章加段落、加比喻、改开头、改成表格、调整结构；讨论文章放哪个目录（understanding/ using/ coding/）。关键词：文章、写篇、那篇、开头、小结、章节 + 内容编辑动作。
+  SKIP: commit message、会议纪要、代码注释、创建 skill、字幕转换、编辑 .claude/rules 配置文件。
 ---
 
 # 文章写作 Skill
