@@ -83,6 +83,17 @@ case "$INSTALL_TYPE" in
   standalone)
     SKILL_DIRS="${SKILL_NAME}"
     ;;
+  standalone+skill)
+    # 脚本装到根目录，同时装 SKILL.md 到 .claude/skills/ 和 .cursor/skills/
+    SKILL_DIRS="${SKILL_NAME}"
+    AI_SKILL_DIRS=""
+    mkdir -p .claude/skills .cursor/skills 2>/dev/null
+    if same_skills_dir ".claude/skills" ".cursor/skills"; then
+      AI_SKILL_DIRS=".claude/skills/${SKILL_NAME}"
+    else
+      AI_SKILL_DIRS=".claude/skills/${SKILL_NAME} .cursor/skills/${SKILL_NAME}"
+    fi
+    ;;
   *)
     echo "错误: 未知的安装类型 '${INSTALL_TYPE}'"
     exit 1
@@ -176,6 +187,18 @@ else
     rm -rf "$SKILL_DIR"
   done
   exit 1
+fi
+
+# standalone+skill: 额外安装 AI Skill（Claude Code / Cursor）
+if [ -n "$AI_SKILL_DIRS" ]; then
+  for AI_DIR in $AI_SKILL_DIRS; do
+    mkdir -p "$AI_DIR"
+    curl -sL "${SKILL_BASE}/claude-skill/SKILL.md" -o "${AI_DIR}/SKILL.md"
+    if [ $? -eq 0 ] && [ -f "${AI_DIR}/SKILL.md" ]; then
+      echo "已安装 AI Skill 到 ${AI_DIR}/"
+    fi
+  done
+  echo "  在 Claude Code / Cursor 中说「帮我总结这个链接」即可自动触发"
 fi
 
 # 安装后初始化

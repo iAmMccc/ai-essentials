@@ -23,6 +23,18 @@ curl -sL https://raw.githubusercontent.com/iAmMccc/ai-essentials/main/install-sk
 
 ## 运行
 
+### Claude Code 用户
+
+安装后直接对 Claude 说：
+
+```
+帮我总结 https://v.douyin.com/xxx
+```
+
+Claude 会自动触发 smart-notes，提取内容并生成笔记，无需配置 AI API。
+
+### 命令行
+
 ```bash
 ./smart-notes/run.sh "链接"
 ```
