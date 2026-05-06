@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(bash -n /Users/qixin/Desktop/Github/Ai/ai-essentials/install-skill.sh)",
+      "Bash(mkdir -p ~/.claude/skills/skill-creator)",
+      "Bash(curl -o ~/.claude/skills/skill-creator/SKILL.md https://raw.githubusercontent.com/anthropics/skills/main/skill-creator/SKILL.md)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh api:*)",
+      "Bash(curl -s https://api.github.com/repos/anthropics/skills/contents/)",
+      "Bash(python3 -c \"import sys,json; [print\\(x['name']\\) for x in json.load\\(sys.stdin\\)]\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(json.dumps\\(data, indent=2\\)[:2000]\\)\")",
+      "Bash(curl:*)",
+      "Bash(open:*)",
+      "Bash(claude --version)",
+      "Bash(mkdir -p /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/article-writing-workspace)",
+      "Bash(cp /Users/qixin/Downloads/eval_set.json /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/article-writing-workspace/eval_set.json)",
+      "Bash(python -m scripts.run_loop --eval-set /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/article-writing-workspace/eval_set.json --skill-path /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/article-writing --model claude-opus-4-6 --max-iterations 5 --verbose)",
+      "Bash(tee /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/article-writing-workspace/run_loop_output.log)",
+      "Bash(python3 -m scripts.run_loop --eval-set /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/article-writing-workspace/eval_set.json --skill-path /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/article-writing --model claude-opus-4-6 --max-iterations 5 --verbose)",
+      "Bash(ls:*)",
+      "Bash(./skills/smart-notes/run.sh:*)",
+      "WebFetch(domain:mp.weixin.qq.com)",
+      "Bash(git commit:*)",
+      "Bash(mkdir -p /Users/qixin/Desktop/diff/.claude/skills/ui-diff)",
+      "Bash(cp /Users/qixin/Desktop/Github/Ai/ai-essentials/skills/ui-diff/SKILL.md /Users/qixin/Desktop/diff/.claude/skills/ui-diff/SKILL.md)",
+      "Bash(rm /Users/qixin/Desktop/diff/CLAUDE.md /Users/qixin/Desktop/diff/AGENTS.md)",
+      "Bash(bash -s ui-diff)",
+      "Bash(git:*)",
+      "Bash(cp /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/ui-diff/SKILL.md /Users/qixin/Desktop/Github/Ai/ai-essentials/skills/ui-diff/SKILL.md)",
+      "Bash(cp /Users/qixin/Desktop/Github/Ai/ai-essentials/.claude/skills/ui-diff/SKILL.md /Users/qixin/Desktop/diff/.claude/skills/ui-diff/SKILL.md)"
+    ]
+  }
+}
