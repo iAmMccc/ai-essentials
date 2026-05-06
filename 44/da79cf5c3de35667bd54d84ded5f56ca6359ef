@@ -1,0 +1,22 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "44da79cf5c3de35667bd54d84ded5f56ca6359ef",
+  "prompts": {
+    "b03ae60d71fa0ad8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "194fe35e-6559-4bc9-9cd7-0067a4984e4e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "iAmMccc",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 2,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/a0147a512d2c3a883e57bc0c3ad10f3721a72c6279832e4100cee0591aca0608"
+    }
+  }
+}
